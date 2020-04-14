@@ -24,6 +24,8 @@ import inet.routing.cluster_alg.ClusterAlgRouter;
 import inet.physicallayer.unitdisk.UnitDiskRadioMedium;
 import inet.visualizer.contract.IIntegratedVisualizer;
 import inet.visualizer.integrated.IntegratedCanvasVisualizer;
+import inet.environment.common.PhysicalEnvironment;
+import inet.physicallayer.contract.packetlevel.IRadioMedium;
 
 network ClusterAlgNetwork
 {
@@ -31,23 +33,23 @@ network ClusterAlgNetwork
         int numHosts;
         @display("bgb=650,650");
     submodules:
-        radioMedium: UnitDiskRadioMedium {
-            parameters:
-                @display("p=100,200;is=s");
-        }
         configurator: Ipv4NetworkConfigurator {
             parameters:
                 config = xml("<config><interface hosts='*' address='145.236.x.x' netmask='255.255.0.0'/></config>");
-                @display("p=100,100;is=s");
+                @display("p=-100,100;is=s");
+        }
+        radioMedium: <default("UnitDiskRadioMedium")> like IRadioMedium {
+            parameters:
+                @display("p=-100,200;is=s");
         }
         routingTableRecorder: RoutingTableRecorder {
             parameters:
-                @display("p=100,300;is=s");
+                @display("p=-100,300;is=s");
         }
         scenarioManager: ScenarioManager {
             parameters:
                 script = default(xml("<scenario/>"));
-                @display("p=100,400;is=s");
+                @display("p=-100,400;is=s");
         }
         host[numHosts]: ClusterAlgRouter {
             parameters:
@@ -55,7 +57,11 @@ network ClusterAlgNetwork
         }
 		visualizer: IntegratedCanvasVisualizer {
             parameters:
-                @display("p=100,500");
+                @display("p=-100,500");
+        }
+        physicalEnvironment: PhysicalEnvironment {
+			parameters:
+            	@display("p=-100,600");
         }
         
     connections allowunconnected:
