@@ -16,7 +16,7 @@
 #include "inet/networklayer/ipv4/Ipv4InterfaceData.h"
 #include "inet/networklayer/ipv4/Ipv4RoutingTable.h"
 #include "inet/routing/base/RoutingProtocolBase.h"
-#include "inet/routing/cluster_alg/clusterAlgHello_m.h"
+#include "inet/routing/cluster_alg/clusterAlgMessages_m.h"
 
 namespace inet {
 
@@ -24,15 +24,6 @@ namespace inet {
 class INET_API ClusterAlg : public RoutingProtocolBase
 {
   private:
-    struct ForwardEntry
-    {
-        cMessage *event = nullptr;
-        Packet *hello = nullptr;
-
-        ForwardEntry() {}
-        ~ForwardEntry();
-    };
-
     cMessage *event = nullptr;
     cPar *broadcastDelay = nullptr;
     InterfaceEntry *interface80211ptr = nullptr;
@@ -40,6 +31,10 @@ class INET_API ClusterAlg : public RoutingProtocolBase
     unsigned int sequencenumber = 0;
     simtime_t routeLifetime;
     cModule *host = nullptr;
+
+    NodeState myState;
+    Ipv4Address clusterId;
+    std::list<Ipv4Address> neighbors;
 
   protected:
     simtime_t helloInterval;
@@ -51,6 +46,9 @@ class INET_API ClusterAlg : public RoutingProtocolBase
     ~ClusterAlg();
 
   protected:
+    void receiveHello(IntrusivePtr<inet::ClusterAlgHello>& recHello);
+    void receiveTopologyControl(IntrusivePtr<inet::ClusterAlgTopologyControl>& topologyControl);
+
     virtual int numInitStages() const override { return NUM_INIT_STAGES; }
     virtual void initialize(int stage) override;
     virtual void handleMessageWhenUp(cMessage *msg) override;

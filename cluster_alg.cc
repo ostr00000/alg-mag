@@ -9,14 +9,6 @@ namespace inet {
 
 Define_Module(ClusterAlg);
 
-ClusterAlg::ForwardEntry::~ForwardEntry()
-{
-    if (this->event != nullptr)
-        delete this->event;
-    if (this->hello != nullptr)
-        delete this->hello;
-}
-
 ClusterAlg::ClusterAlg()
 {
 }
@@ -91,6 +83,8 @@ void ClusterAlg::start()
     //HelloForward = new ClusterAlgHello("HelloForward");
     // schedules a random periodic event: the hello message broadcast from ClusterAlg module
     scheduleAt(simTime() + uniform(0.0, par("maxVariance").doubleValue()), event);
+    myState = NodeState::UNDECIDED;
+    clusterId = Ipv4Address::UNSPECIFIED_ADDRESS;
 }
 
 void ClusterAlg::stop()
@@ -102,7 +96,7 @@ void ClusterAlg::handleSelfMessage(cMessage *msg)
 {
     if (msg == event) {
         auto hello = makeShared<ClusterAlgHello>();
-        rt->purge(); // TODO
+        rt->purge(); // remove invalid ipv4route
 
         Ipv4Address source = interface80211ptr->getProtocolData<Ipv4InterfaceData>()->getIPAddress();
         hello->setChunkLength(b(128)); ///size of Hello message in bits
@@ -111,6 +105,28 @@ void ClusterAlg::handleSelfMessage(cMessage *msg)
         hello->setSequencenumber(sequencenumber);
         hello->setNextAddress(source);
         hello->setHopdistance(1);
+
+        hello->setMessageType(HELLO);
+        hello->setState(myState);
+        hello->setSrcId(interface80211ptr->getIpv4Address());
+        hello->setClusterHeadId(clusterId);
+
+
+
+        std::list<Ipv4Address> oneHopNeighbors;
+        for (int k=0, total=rt->getNumRoutes();k<total;k++) {
+            ClusterAlgIpv4Route *route = dynamic_cast<ClusterAlgIpv4Route*>(rt->getRoute(k));
+            if (route!=nullptr && route->getMetric() == 1){
+                oneHopNeighbors.push_back(route->getDestination());
+            }
+        }
+        hello->setNeighborsArraySize(oneHopNeighbors.size());
+        int index = 0;
+        for (auto const& n:oneHopNeighbors){
+            hello->setNeighbors(index, n);
+            index += 1;
+        }
+
 
         //new control info for ClusterAlgHello
         auto packet = new Packet("Hello", hello);
@@ -126,7 +142,7 @@ void ClusterAlg::handleSelfMessage(cMessage *msg)
         packet = nullptr;
         hello = nullptr;
 
-        //schedule new brodcast hello message event
+        //schedule new broadcast hello message event
         scheduleAt(simTime() + helloInterval + broadcastDelay->doubleValue(), event);
         bubble("Sending new hello message");
     }
@@ -136,82 +152,79 @@ void ClusterAlg::handleMessageWhenUp(cMessage *msg)
 {
     if (msg->isSelfMessage()) {
         handleSelfMessage(msg);
+        return;
     }
-    else if (check_and_cast<Packet*>(msg)->getTag<PacketProtocolTag>()->getProtocol() == &Protocol::manet) {
-        auto packet = new Packet("Hello");
-
-        // When ClusterAlg module receives ClusterAlgHello from other host
-        // it adds/replaces the information in routing table for the one contained in the message
-        // but only if it's useful/up-to-date. If not the ClusterAlg module ignores the message.
-        auto addressReq = packet->addTag<L3AddressReq>();
-        addressReq->setDestAddress(Ipv4Address(255, 255, 255, 255));
-        addressReq->setSrcAddress(interface80211ptr->getProtocolData<Ipv4InterfaceData>()->getIPAddress());
-        packet->addTag<InterfaceReq>()->setInterfaceId(interface80211ptr->getInterfaceId());
-        packet->addTag<PacketProtocolTag>()->setProtocol(&Protocol::manet);
-        packet->addTag<DispatchProtocolReq>()->setProtocol(&Protocol::ipv4);
-        auto recHello = staticPtrCast<ClusterAlgHello>(check_and_cast<Packet*>(msg)->peekData<ClusterAlgHello>()->dupShared());
-
-        if (msg->arrivedOn("ipIn")) {
-            bubble("Received hello message");
-            Ipv4Address source = interface80211ptr->getProtocolData<Ipv4InterfaceData>()->getIPAddress();
-
-            Ipv4Address src = recHello->getSrcAddress();
-            unsigned int msgsequencenumber = recHello->getSequencenumber();
-            int numHops = recHello->getHopdistance();
-            Ipv4Address next = recHello->getNextAddress();
-
-            if (src == source) {
-                EV_INFO << "Hello msg dropped. This message returned to the original creator.\n";
-                delete packet;
-                delete msg;
-                return;
-            }
-
-            Ipv4Route *_entrada_routing = rt->findBestMatchingRoute(src);
-            ClusterAlgIpv4Route *entrada_routing = dynamic_cast<ClusterAlgIpv4Route*>(_entrada_routing);
-
-            //Tests if the ClusterAlg hello message that arrived is useful
-            if (_entrada_routing == nullptr || (_entrada_routing != nullptr && _entrada_routing->getNetmask() != Ipv4Address::ALLONES_ADDRESS)
-                    || (entrada_routing != nullptr
-                            && (msgsequencenumber > (entrada_routing->getSequencenumber())
-                                    || (msgsequencenumber == (entrada_routing->getSequencenumber()) && numHops < (entrada_routing->getMetric()))))) {
-
-                //remove old entry
-                if (entrada_routing != nullptr)
-                    rt->deleteRoute(entrada_routing);
-
-                //adds new information to routing table according to information in hello message
-                {
-                    Ipv4Address netmask = Ipv4Address::ALLONES_ADDRESS; // Ipv4Address(par("netmask").stringValue());
-                    ClusterAlgIpv4Route *e = new ClusterAlgIpv4Route();
-                    e->setDestination(src);
-                    e->setNetmask(netmask);
-                    e->setGateway(next);
-                    e->setInterface(interface80211ptr);
-                    e->setSourceType(IRoute::MANET);
-                    e->setMetric(numHops);
-                    e->setSequencenumber(msgsequencenumber);
-                    e->setExpiryTime(simTime() + routeLifetime);
-                    rt->addRoute(e);
-                }
-
-                recHello->setNextAddress(source);
-                numHops++;
-                recHello->setHopdistance(numHops);
-                double waitTime = intuniform(1, 50) / 100;
-                packet->insertAtBack(recHello);
-                sendDelayed(packet, waitTime, "ipOut");
-                packet = nullptr;
-
-            }
-            delete packet;
-            delete msg;
-        }
-        else
-            throw cRuntimeError("Message arrived on unknown gate %s", msg->getArrivalGate()->getName());
-    }
-    else
+    else if (check_and_cast<Packet*>(msg)->getTag<PacketProtocolTag>()->getProtocol() != &Protocol::manet) {
         throw cRuntimeError("Message not supported %s", msg->getName());
+    }
+
+    if (!msg->arrivedOn("ipIn")) {
+        throw cRuntimeError("Message arrived on unknown gate %s", msg->getArrivalGate()->getName());
+    }
+
+    auto type = staticPtrCast<ClusterAlgBase>(check_and_cast<Packet*>(msg)->peekData<ClusterAlgBase>()->dupShared())->getMessageType();
+
+    if (type == MessageType::HELLO) {
+        auto recHello = staticPtrCast<ClusterAlgHello>(check_and_cast<Packet*>(msg)->peekData<ClusterAlgHello>()->dupShared());
+        receiveHello(recHello);
+
+    }
+    else if (type == MessageType::TOPOLOGY_CONTROL) {
+        auto recTopolgyControl = staticPtrCast<ClusterAlgTopologyControl>(
+                check_and_cast<Packet*>(msg)->peekData<ClusterAlgTopologyControl>()->dupShared());
+        receiveTopologyControl(recTopolgyControl);
+
+    }
+    else {
+        throw cRuntimeError("Unknown message type");
+    }
+
+    delete msg;
+}
+
+void ClusterAlg::receiveHello(IntrusivePtr<inet::ClusterAlgHello> &recHello)
+{
+    bubble("Received hello message");
+    Ipv4Address myIp = interface80211ptr->getProtocolData<Ipv4InterfaceData>()->getIPAddress();
+
+    Ipv4Address src = recHello->getSrcAddress();
+    Ipv4Address next = recHello->getNextAddress();
+    unsigned int msgsequencenumber = recHello->getSequencenumber();
+    int numHops = recHello->getHopdistance();
+
+    Ipv4Route *_entrada_routing = rt->findBestMatchingRoute(src);
+    ClusterAlgIpv4Route *entrada_routing = dynamic_cast<ClusterAlgIpv4Route*>(_entrada_routing);
+
+    //Tests if the ClusterAlg hello message that arrived is useful
+    if (_entrada_routing == nullptr || (_entrada_routing != nullptr && _entrada_routing->getNetmask() != Ipv4Address::ALLONES_ADDRESS)
+            || (entrada_routing != nullptr
+                    && (msgsequencenumber > (entrada_routing->getSequencenumber())
+                            || (msgsequencenumber == (entrada_routing->getSequencenumber()) && numHops < (entrada_routing->getMetric()))))) {
+
+        //remove old entry
+        if (entrada_routing != nullptr)
+            rt->deleteRoute(entrada_routing);
+
+        //adds new information to routing table according to information in hello message
+        {
+            ClusterAlgIpv4Route *e = new ClusterAlgIpv4Route();
+            e->setDestination(src);
+            e->setNetmask(Ipv4Address::ALLONES_ADDRESS);
+            e->setGateway(next);
+            e->setInterface(interface80211ptr);
+            e->setSourceType(IRoute::MANET);
+            e->setMetric(numHops);
+            e->setSequencenumber(msgsequencenumber);
+            e->setExpiryTime(simTime() + routeLifetime);
+            rt->addRoute(e);
+        }
+    }
+}
+
+
+void ClusterAlg::receiveTopologyControl(IntrusivePtr<inet::ClusterAlgTopologyControl> &topologyControl)
+{
+
 }
 
 } // namespace inet
