@@ -20,6 +20,22 @@
 
 namespace inet {
 
+class INET_API ClusterAlgIpv4Route : public Ipv4Route
+{
+    protected:
+        unsigned int sequencenumber; // originated from destination. Ensures loop freeness.
+        simtime_t expiryTime;  // time the routing entry is valid until
+
+    public:
+        virtual bool isValid() const override { return expiryTime == 0 || expiryTime > simTime(); }
+
+        simtime_t getExpiryTime() const {return expiryTime;}
+        void setExpiryTime(simtime_t time) {expiryTime = time;}
+        void setSequencenumber(int i) {sequencenumber = i;}
+        unsigned int getSequencenumber() const {return sequencenumber;}
+};
+
+
 
 class INET_API ClusterAlg : public RoutingProtocolBase
 {
@@ -48,6 +64,13 @@ class INET_API ClusterAlg : public RoutingProtocolBase
   protected:
     void receiveHello(IntrusivePtr<inet::ClusterAlgHello>& recHello);
     void receiveTopologyControl(IntrusivePtr<inet::ClusterAlgTopologyControl>& topologyControl);
+    void addNewRoute(Ipv4Address src, Ipv4Address next, int metric, unsigned int msgSeq);
+    inline bool noRoute(Ipv4Route *route);
+    inline bool isNotBroadcast(Ipv4Route *route);
+    inline bool hasBetterSeqNumber(ClusterAlgIpv4Route *route, unsigned int seqNum);
+    inline bool hasSameSeqNumButShortestPath(ClusterAlgIpv4Route *route, unsigned int seqNum, int hopsNum);
+    inline bool removeOldRoute(ClusterAlgIpv4Route *route);
+
 
     virtual int numInitStages() const override { return NUM_INIT_STAGES; }
     virtual void initialize(int stage) override;
@@ -63,20 +86,6 @@ class INET_API ClusterAlg : public RoutingProtocolBase
     void stop();
 };
 
-class INET_API ClusterAlgIpv4Route : public Ipv4Route
-{
-    protected:
-        unsigned int sequencenumber; // originated from destination. Ensures loop freeness.
-        simtime_t expiryTime;  // time the routing entry is valid until
-
-    public:
-        virtual bool isValid() const override { return expiryTime == 0 || expiryTime > simTime(); }
-
-        simtime_t getExpiryTime() const {return expiryTime;}
-        void setExpiryTime(simtime_t time) {expiryTime = time;}
-        void setSequencenumber(int i) {sequencenumber = i;}
-        unsigned int getSequencenumber() const {return sequencenumber;}
-};
 
 } // namespace inet
 

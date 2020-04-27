@@ -111,22 +111,19 @@ void ClusterAlg::handleSelfMessage(cMessage *msg)
         hello->setSrcId(interface80211ptr->getIpv4Address());
         hello->setClusterHeadId(clusterId);
 
-
-
         std::list<Ipv4Address> oneHopNeighbors;
-        for (int k=0, total=rt->getNumRoutes();k<total;k++) {
+        for (int k = 0, total = rt->getNumRoutes(); k < total; k++) {
             ClusterAlgIpv4Route *route = dynamic_cast<ClusterAlgIpv4Route*>(rt->getRoute(k));
-            if (route!=nullptr && route->getMetric() == 1){
+            if (route != nullptr && route->getMetric() == 1) {
                 oneHopNeighbors.push_back(route->getDestination());
             }
         }
         hello->setNeighborsArraySize(oneHopNeighbors.size());
         int index = 0;
-        for (auto const& n:oneHopNeighbors){
+        for (auto const &n : oneHopNeighbors) {
             hello->setNeighbors(index, n);
             index += 1;
         }
-
 
         //new control info for ClusterAlgHello
         auto packet = new Packet("Hello", hello);
@@ -192,35 +189,52 @@ void ClusterAlg::receiveHello(IntrusivePtr<inet::ClusterAlgHello> &recHello)
     unsigned int msgsequencenumber = recHello->getSequencenumber();
     int numHops = recHello->getHopdistance();
 
-    Ipv4Route *_entrada_routing = rt->findBestMatchingRoute(src);
-    ClusterAlgIpv4Route *entrada_routing = dynamic_cast<ClusterAlgIpv4Route*>(_entrada_routing);
+    Ipv4Route *route = rt->findBestMatchingRoute(src);
+    ClusterAlgIpv4Route *clusterAlgRoute = dynamic_cast<ClusterAlgIpv4Route*>(route);
 
-    //Tests if the ClusterAlg hello message that arrived is useful
-    if (_entrada_routing == nullptr || (_entrada_routing != nullptr && _entrada_routing->getNetmask() != Ipv4Address::ALLONES_ADDRESS)
-            || (entrada_routing != nullptr
-                    && (msgsequencenumber > (entrada_routing->getSequencenumber())
-                            || (msgsequencenumber == (entrada_routing->getSequencenumber()) && numHops < (entrada_routing->getMetric()))))) {
-
-        //remove old entry
-        if (entrada_routing != nullptr)
-            rt->deleteRoute(entrada_routing);
-
-        //adds new information to routing table according to information in hello message
-        {
-            ClusterAlgIpv4Route *e = new ClusterAlgIpv4Route();
-            e->setDestination(src);
-            e->setNetmask(Ipv4Address::ALLONES_ADDRESS);
-            e->setGateway(next);
-            e->setInterface(interface80211ptr);
-            e->setSourceType(IRoute::MANET);
-            e->setMetric(numHops);
-            e->setSequencenumber(msgsequencenumber);
-            e->setExpiryTime(simTime() + routeLifetime);
-            rt->addRoute(e);
-        }
+    if (noRoute(route) || isNotBroadcast(route) || hasBetterSeqNumber(clusterAlgRoute, sequencenumber)
+            || hasSameSeqNumButShortestPath(clusterAlgRoute, sequencenumber, numHops)) {
+        removeOldRoute(clusterAlgRoute);
+        addNewRoute(src, next, numHops, msgsequencenumber);
     }
 }
 
+inline bool ClusterAlg::noRoute(Ipv4Route *route)
+{
+    return route == nullptr;
+}
+inline bool ClusterAlg::isNotBroadcast(Ipv4Route *route)
+{
+    return route != nullptr and route->getNetmask() != Ipv4Address::ALLONES_ADDRESS;
+}
+inline bool ClusterAlg::hasBetterSeqNumber(ClusterAlgIpv4Route *route, unsigned int seqNum)
+{
+    return route != nullptr and route->getSequencenumber() < seqNum;
+}
+inline bool ClusterAlg::hasSameSeqNumButShortestPath(ClusterAlgIpv4Route *route, unsigned int seqNum, int hopsNum)
+{
+    return route != nullptr and route->getSequencenumber() == seqNum and route->getMetric() == hopsNum;
+}
+inline bool ClusterAlg::removeOldRoute(ClusterAlgIpv4Route *route)
+{
+    if (route != nullptr) {
+        rt->deleteRoute(route);
+    }
+}
+
+void ClusterAlg::addNewRoute(Ipv4Address src, Ipv4Address next, int metric, unsigned int msgSeq)
+{
+    ClusterAlgIpv4Route *e = new ClusterAlgIpv4Route();
+    e->setDestination(src);
+    e->setNetmask(Ipv4Address::ALLONES_ADDRESS);
+    e->setGateway(next);
+    e->setInterface(interface80211ptr);
+    e->setSourceType(IRoute::MANET);
+    e->setMetric(metric);
+    e->setSequencenumber(msgSeq);
+    e->setExpiryTime(simTime() + routeLifetime);
+    rt->addRoute(e);
+}
 
 void ClusterAlg::receiveTopologyControl(IntrusivePtr<inet::ClusterAlgTopologyControl> &topologyControl)
 {
