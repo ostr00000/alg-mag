@@ -13,8 +13,6 @@ enum MessageType {
 
 class ClusterAlgBase extends FieldsChunk{
     MessageType messageType;
-	Ipv4Address srcAddress; // not used
-    Ipv4Address nextAddress;//not used
     unsigned int sequencenumber;
     int hopdistance;
     Ipv4Address srcId;
@@ -23,7 +21,7 @@ class ClusterAlgBase extends FieldsChunk{
 
 enum NodeState {
  	   UNDECIDED = 1;
- 	   LIDER = 2;
+ 	   LEADER = 2;
  	   MEMBER = 3;
 }
 

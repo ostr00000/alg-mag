@@ -240,8 +240,6 @@ ClusterAlgBase& ClusterAlgBase::operator=(const ClusterAlgBase& other)
 void ClusterAlgBase::copy(const ClusterAlgBase& other)
 {
     this->messageType = other.messageType;
-    this->srcAddress = other.srcAddress;
-    this->nextAddress = other.nextAddress;
     this->sequencenumber = other.sequencenumber;
     this->hopdistance = other.hopdistance;
     this->srcId = other.srcId;
@@ -251,8 +249,6 @@ void ClusterAlgBase::parsimPack(omnetpp::cCommBuffer *b) const
 {
     ::inet::FieldsChunk::parsimPack(b);
     doParsimPacking(b,this->messageType);
-    doParsimPacking(b,this->srcAddress);
-    doParsimPacking(b,this->nextAddress);
     doParsimPacking(b,this->sequencenumber);
     doParsimPacking(b,this->hopdistance);
     doParsimPacking(b,this->srcId);
@@ -262,8 +258,6 @@ void ClusterAlgBase::parsimUnpack(omnetpp::cCommBuffer *b)
 {
     ::inet::FieldsChunk::parsimUnpack(b);
     doParsimUnpacking(b,this->messageType);
-    doParsimUnpacking(b,this->srcAddress);
-    doParsimUnpacking(b,this->nextAddress);
     doParsimUnpacking(b,this->sequencenumber);
     doParsimUnpacking(b,this->hopdistance);
     doParsimUnpacking(b,this->srcId);
@@ -278,28 +272,6 @@ void ClusterAlgBase::setMessageType(inet::MessageType messageType)
 {
     handleChange();
     this->messageType = messageType;
-}
-
-const Ipv4Address& ClusterAlgBase::getSrcAddress() const
-{
-    return this->srcAddress;
-}
-
-void ClusterAlgBase::setSrcAddress(const Ipv4Address& srcAddress)
-{
-    handleChange();
-    this->srcAddress = srcAddress;
-}
-
-const Ipv4Address& ClusterAlgBase::getNextAddress() const
-{
-    return this->nextAddress;
-}
-
-void ClusterAlgBase::setNextAddress(const Ipv4Address& nextAddress)
-{
-    handleChange();
-    this->nextAddress = nextAddress;
 }
 
 unsigned int ClusterAlgBase::getSequencenumber() const
@@ -341,8 +313,6 @@ class ClusterAlgBaseDescriptor : public omnetpp::cClassDescriptor
     mutable const char **propertynames;
     enum FieldConstants {
         FIELD_messageType,
-        FIELD_srcAddress,
-        FIELD_nextAddress,
         FIELD_sequencenumber,
         FIELD_hopdistance,
         FIELD_srcId,
@@ -408,7 +378,7 @@ const char *ClusterAlgBaseDescriptor::getProperty(const char *propertyname) cons
 int ClusterAlgBaseDescriptor::getFieldCount() const
 {
     omnetpp::cClassDescriptor *basedesc = getBaseClassDescriptor();
-    return basedesc ? 6+basedesc->getFieldCount() : 6;
+    return basedesc ? 4+basedesc->getFieldCount() : 4;
 }
 
 unsigned int ClusterAlgBaseDescriptor::getFieldTypeFlags(int field) const
@@ -421,13 +391,11 @@ unsigned int ClusterAlgBaseDescriptor::getFieldTypeFlags(int field) const
     }
     static unsigned int fieldTypeFlags[] = {
         FD_ISEDITABLE,    // FIELD_messageType
-        0,    // FIELD_srcAddress
-        0,    // FIELD_nextAddress
         FD_ISEDITABLE,    // FIELD_sequencenumber
         FD_ISEDITABLE,    // FIELD_hopdistance
         0,    // FIELD_srcId
     };
-    return (field >= 0 && field < 6) ? fieldTypeFlags[field] : 0;
+    return (field >= 0 && field < 4) ? fieldTypeFlags[field] : 0;
 }
 
 const char *ClusterAlgBaseDescriptor::getFieldName(int field) const
@@ -440,13 +408,11 @@ const char *ClusterAlgBaseDescriptor::getFieldName(int field) const
     }
     static const char *fieldNames[] = {
         "messageType",
-        "srcAddress",
-        "nextAddress",
         "sequencenumber",
         "hopdistance",
         "srcId",
     };
-    return (field >= 0 && field < 6) ? fieldNames[field] : nullptr;
+    return (field >= 0 && field < 4) ? fieldNames[field] : nullptr;
 }
 
 int ClusterAlgBaseDescriptor::findField(const char *fieldName) const
@@ -454,11 +420,9 @@ int ClusterAlgBaseDescriptor::findField(const char *fieldName) const
     omnetpp::cClassDescriptor *basedesc = getBaseClassDescriptor();
     int base = basedesc ? basedesc->getFieldCount() : 0;
     if (fieldName[0] == 'm' && strcmp(fieldName, "messageType") == 0) return base+0;
-    if (fieldName[0] == 's' && strcmp(fieldName, "srcAddress") == 0) return base+1;
-    if (fieldName[0] == 'n' && strcmp(fieldName, "nextAddress") == 0) return base+2;
-    if (fieldName[0] == 's' && strcmp(fieldName, "sequencenumber") == 0) return base+3;
-    if (fieldName[0] == 'h' && strcmp(fieldName, "hopdistance") == 0) return base+4;
-    if (fieldName[0] == 's' && strcmp(fieldName, "srcId") == 0) return base+5;
+    if (fieldName[0] == 's' && strcmp(fieldName, "sequencenumber") == 0) return base+1;
+    if (fieldName[0] == 'h' && strcmp(fieldName, "hopdistance") == 0) return base+2;
+    if (fieldName[0] == 's' && strcmp(fieldName, "srcId") == 0) return base+3;
     return basedesc ? basedesc->findField(fieldName) : -1;
 }
 
@@ -472,13 +436,11 @@ const char *ClusterAlgBaseDescriptor::getFieldTypeString(int field) const
     }
     static const char *fieldTypeStrings[] = {
         "inet::MessageType",    // FIELD_messageType
-        "inet::Ipv4Address",    // FIELD_srcAddress
-        "inet::Ipv4Address",    // FIELD_nextAddress
         "unsigned int",    // FIELD_sequencenumber
         "int",    // FIELD_hopdistance
         "inet::Ipv4Address",    // FIELD_srcId
     };
-    return (field >= 0 && field < 6) ? fieldTypeStrings[field] : nullptr;
+    return (field >= 0 && field < 4) ? fieldTypeStrings[field] : nullptr;
 }
 
 const char **ClusterAlgBaseDescriptor::getFieldPropertyNames(int field) const
@@ -553,8 +515,6 @@ std::string ClusterAlgBaseDescriptor::getFieldValueAsString(void *object, int fi
     ClusterAlgBase *pp = (ClusterAlgBase *)object; (void)pp;
     switch (field) {
         case FIELD_messageType: return enum2string(pp->getMessageType(), "inet::MessageType");
-        case FIELD_srcAddress: return pp->getSrcAddress().str();
-        case FIELD_nextAddress: return pp->getNextAddress().str();
         case FIELD_sequencenumber: return ulong2string(pp->getSequencenumber());
         case FIELD_hopdistance: return long2string(pp->getHopdistance());
         case FIELD_srcId: return pp->getSrcId().str();
@@ -602,8 +562,6 @@ void *ClusterAlgBaseDescriptor::getFieldStructValuePointer(void *object, int fie
     }
     ClusterAlgBase *pp = (ClusterAlgBase *)object; (void)pp;
     switch (field) {
-        case FIELD_srcAddress: return toVoidPtr(&pp->getSrcAddress()); break;
-        case FIELD_nextAddress: return toVoidPtr(&pp->getNextAddress()); break;
         case FIELD_srcId: return toVoidPtr(&pp->getSrcId()); break;
         default: return nullptr;
     }
@@ -613,7 +571,7 @@ EXECUTE_ON_STARTUP(
     omnetpp::cEnum *e = omnetpp::cEnum::find("inet::NodeState");
     if (!e) omnetpp::enums.getInstance()->add(e = new omnetpp::cEnum("inet::NodeState"));
     e->insert(UNDECIDED, "UNDECIDED");
-    e->insert(LIDER, "LIDER");
+    e->insert(LEADER, "LEADER");
     e->insert(MEMBER, "MEMBER");
 )
 

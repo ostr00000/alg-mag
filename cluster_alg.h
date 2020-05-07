@@ -20,72 +20,111 @@
 
 namespace inet {
 
-class INET_API ClusterAlgIpv4Route : public Ipv4Route
+class NodeObject : public cObject
 {
-    protected:
-        unsigned int sequencenumber; // originated from destination. Ensures loop freeness.
-        simtime_t expiryTime;  // time the routing entry is valid until
-
-    public:
-        virtual bool isValid() const override { return expiryTime == 0 || expiryTime > simTime(); }
-
-        simtime_t getExpiryTime() const {return expiryTime;}
-        void setExpiryTime(simtime_t time) {expiryTime = time;}
-        void setSequencenumber(int i) {sequencenumber = i;}
-        unsigned int getSequencenumber() const {return sequencenumber;}
+public:
+    Ipv4Address address;
 };
 
+class INET_API ClusterAlgIpv4Route : public Ipv4Route
+{
+protected:
+    simtime_t expiryTime;  // time the routing entry is valid until
+public:
+    unsigned int sequencenumber; // originated from destination. Ensures loop freeness.
+    NodeState state;
+    int undecidedNeighborsNum = -1;
 
+public:
+    virtual bool isValid() const override
+    {
+        return expiryTime == 0 || expiryTime > simTime();
+    }
+
+    simtime_t getExpiryTime() const
+    {
+        return expiryTime;
+    }
+    void setExpiryTime(simtime_t time)
+    {
+        expiryTime = time;
+    }
+
+    void setSourceFromId(Ipv4Address id)
+    {
+        NodeObject *nObj = new NodeObject();
+        nObj->address = id;
+        setSource(nObj);
+    }
+    Ipv4Address getIdFromSource()
+    {
+        NodeObject *src = dynamic_cast<NodeObject*>(getSource());
+        return src->address;
+    }
+
+};
 
 class INET_API ClusterAlg : public RoutingProtocolBase
 {
-  private:
-    cMessage *event = nullptr;
+private:
+    cMessage *helloEvent = nullptr;
+    cMessage *clusterStateEvent = nullptr;
+    cMessage *topolgyControlEvent = nullptr;
+
     cPar *broadcastDelay = nullptr;
     InterfaceEntry *interface80211ptr = nullptr;
     int interfaceId = -1;
     unsigned int sequencenumber = 0;
     simtime_t routeLifetime;
     cModule *host = nullptr;
-
+public:
     NodeState myState;
     Ipv4Address clusterId;
     std::list<Ipv4Address> neighbors;
 
-  protected:
+protected:
     simtime_t helloInterval;
     IInterfaceTable *ift = nullptr;
     IIpv4RoutingTable *rt = nullptr;
 
-  public:
+public:
     ClusterAlg();
     ~ClusterAlg();
 
-  protected:
-    void receiveHello(IntrusivePtr<inet::ClusterAlgHello>& recHello);
-    void receiveTopologyControl(IntrusivePtr<inet::ClusterAlgTopologyControl>& topologyControl);
-    void addNewRoute(Ipv4Address src, Ipv4Address next, int metric, unsigned int msgSeq);
-    inline bool noRoute(Ipv4Route *route);
-    inline bool isNotBroadcast(Ipv4Route *route);
-    inline bool hasBetterSeqNumber(ClusterAlgIpv4Route *route, unsigned int seqNum);
-    inline bool hasSameSeqNumButShortestPath(ClusterAlgIpv4Route *route, unsigned int seqNum, int hopsNum);
-    inline bool removeOldRoute(ClusterAlgIpv4Route *route);
+protected:
+    void receiveHello(IntrusivePtr<inet::ClusterAlgHello> &recHello);
+    void receiveTopologyControl(IntrusivePtr<inet::ClusterAlgTopologyControl> &topologyControl);
+    void addNewRoute(Ipv4Address dest, Ipv4Address next, Ipv4Address source, int metric, IntrusivePtr<inet::ClusterAlgHello> &recHello);
+    inline void removeOldRoute(ClusterAlgIpv4Route *route);
 
+    void handleHelloEvent();
+    void handleClusterStateEvent();
 
-    virtual int numInitStages() const override { return NUM_INIT_STAGES; }
+    virtual int numInitStages() const override
+    {
+        return NUM_INIT_STAGES;
+    }
     virtual void initialize(int stage) override;
     virtual void handleMessageWhenUp(cMessage *msg) override;
 
     void handleSelfMessage(cMessage *msg);
 
     // lifecycle
-    virtual void handleStartOperation(LifecycleOperation *operation) override { start(); }
-    virtual void handleStopOperation(LifecycleOperation *operation) override { stop(); }
-    virtual void handleCrashOperation(LifecycleOperation *operation) override  { stop(); }
+    virtual void handleStartOperation(LifecycleOperation *operation) override
+    {
+        start();
+    }
+    virtual void handleStopOperation(LifecycleOperation *operation) override
+    {
+        stop();
+    }
+    virtual void handleCrashOperation(LifecycleOperation *operation) override
+    {
+        stop();
+    }
     void start();
     void stop();
 };
-
 
 } // namespace inet
 

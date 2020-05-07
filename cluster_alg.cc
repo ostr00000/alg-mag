@@ -17,8 +17,9 @@ ClusterAlg::~ClusterAlg()
 {
     stop();
     // Dispose of dynamically allocated the objects
-    delete event;
-    //delete Hello;
+    delete helloEvent;
+    delete clusterStateEvent;
+    delete topolgyControlEvent;
 }
 
 void ClusterAlg::initialize(int stage)
@@ -34,7 +35,13 @@ void ClusterAlg::initialize(int stage)
 
         routeLifetime = par("routeLifetime").doubleValue();
         helloInterval = par("helloInterval");
-        event = new cMessage("event");
+        helloEvent = new cMessage("helloEvent");
+        clusterStateEvent = new cMessage("clusterStateEvent");
+        topolgyControlEvent = new cMessage("topolgyControlEvent");
+
+        WATCH(myState);
+        WATCH(clusterId);
+
     }
     else if (stage == INITSTAGE_ROUTING_PROTOCOLS) {
         registerService(Protocol::manet, nullptr, gate("ipIn"));
@@ -77,71 +84,142 @@ void ClusterAlg::start()
     }
     CHK(interface80211ptr->getProtocolData<Ipv4InterfaceData>())->joinMulticastGroup(Ipv4Address::LL_MANET_ROUTERS);
 
-    // schedules a random periodic event: the hello message broadcast from ClusterAlg module
+    // schedules a random periodic helloEvent: the hello message broadcast from ClusterAlg module
 
     //reads from omnetpp.ini
     //HelloForward = new ClusterAlgHello("HelloForward");
-    // schedules a random periodic event: the hello message broadcast from ClusterAlg module
-    scheduleAt(simTime() + uniform(0.0, par("maxVariance").doubleValue()), event);
+    // schedules a random periodic helloEvent: the hello message broadcast from ClusterAlg module
+    scheduleAt(simTime() + uniform(0.0, par("maxVariance").doubleValue()), helloEvent);
     myState = NodeState::UNDECIDED;
     clusterId = Ipv4Address::UNSPECIFIED_ADDRESS;
+
+    scheduleAt(simTime() + par("clusterUndecidedFirstTime").doubleValue() + uniform(0.0, par("maxVariance").doubleValue()), clusterStateEvent);
+
 }
 
 void ClusterAlg::stop()
 {
-    cancelEvent(event);
+    cancelEvent(helloEvent);
+    cancelEvent(clusterStateEvent);
 }
 
 void ClusterAlg::handleSelfMessage(cMessage *msg)
 {
-    if (msg == event) {
-        auto hello = makeShared<ClusterAlgHello>();
-        rt->purge(); // remove invalid ipv4route
+    if (msg == helloEvent) {
+        handleHelloEvent();
+    }
+    else if (msg == clusterStateEvent) {
+        handleClusterStateEvent();
+    }
+}
 
-        Ipv4Address source = interface80211ptr->getProtocolData<Ipv4InterfaceData>()->getIPAddress();
-        hello->setChunkLength(b(128)); ///size of Hello message in bits
-        hello->setSrcAddress(source);
-        sequencenumber += 2;
-        hello->setSequencenumber(sequencenumber);
-        hello->setNextAddress(source);
-        hello->setHopdistance(1);
+void ClusterAlg::handleHelloEvent()
+{
+    auto hello = makeShared<ClusterAlgHello>();
+    rt->purge(); // remove invalid ipv4route
 
-        hello->setMessageType(HELLO);
-        hello->setState(myState);
-        hello->setSrcId(interface80211ptr->getIpv4Address());
-        hello->setClusterHeadId(clusterId);
+    //        Ipv4Address source = interface80211ptr->getProtocolData<Ipv4InterfaceData>()->getIPAddress();
+    hello->setChunkLength(b(128)); ///size of Hello message in bits
+    sequencenumber += 2;
+    hello->setSequencenumber(sequencenumber);
+    hello->setHopdistance(1);
+    hello->setUndecidedNeighborsNum(operationalState);
 
-        std::list<Ipv4Address> oneHopNeighbors;
-        for (int k = 0, total = rt->getNumRoutes(); k < total; k++) {
-            ClusterAlgIpv4Route *route = dynamic_cast<ClusterAlgIpv4Route*>(rt->getRoute(k));
-            if (route != nullptr && route->getMetric() == 1) {
-                oneHopNeighbors.push_back(route->getDestination());
+    hello->setMessageType(HELLO);
+    hello->setState(myState);
+    hello->setSrcId(interface80211ptr->getIpv4Address());
+    hello->setClusterHeadId(clusterId);
+
+    std::list<Ipv4Address> oneHopNeighbors;
+    for (int k = 0, total = rt->getNumRoutes(); k < total; k++) {
+        ClusterAlgIpv4Route *route = dynamic_cast<ClusterAlgIpv4Route*>(rt->getRoute(k));
+        if (route != nullptr && route->getMetric() == 1) {
+            oneHopNeighbors.push_back(route->getDestination());
+        }
+    }
+    hello->setNeighborsArraySize(oneHopNeighbors.size());
+    int index = 0;
+    for (auto const &n : oneHopNeighbors) {
+        hello->setNeighbors(index, n);
+        index += 1;
+    }
+
+    //new control info for ClusterAlgHello
+    auto packet = new Packet("Hello", hello);
+    auto addressReq = packet->addTag<L3AddressReq>();
+    addressReq->setDestAddress(Ipv4Address(255, 255, 255, 255));
+    addressReq->setSrcAddress(interface80211ptr->getIpv4Address());
+    packet->addTag<InterfaceReq>()->setInterfaceId(interface80211ptr->getInterfaceId());
+    packet->addTag<PacketProtocolTag>()->setProtocol(&Protocol::manet);
+    packet->addTag<DispatchProtocolReq>()->setProtocol(&Protocol::ipv4);
+
+    //broadcast to other nodes the hello message
+    send(packet, "ipOut");
+    packet = nullptr;
+    hello = nullptr;
+
+    //schedule new broadcast hello message helloEvent
+    scheduleAt(simTime() + helloInterval + broadcastDelay->doubleValue(), helloEvent);
+    bubble("Sending new hello message");
+}
+
+void ClusterAlg::handleClusterStateEvent()
+{
+    if(myState == NodeState::UNDECIDED){
+        int myUndecidedDirectNeighbors = 0;
+        int neighborBiggestUndecidedNeighbors = -1;
+        Ipv4Address idUndecided = Ipv4Address::UNSPECIFIED_ADDRESS;
+
+        // find any leader
+        for(int i=0, j=rt->getNumRoutes();i<j;i++){
+            Ipv4Route *route = rt->getRoute(i);
+            ClusterAlgIpv4Route *clusterRoute = dynamic_cast<ClusterAlgIpv4Route*>(route);
+            if(clusterRoute == nullptr){
+                continue;
+            }
+            // if isDirectNeighbor and isLeader
+            if (clusterRoute->getMetric() == 1){
+                if (clusterRoute->state == NodeState::LEADER){
+                    myState = NodeState::MEMBER;
+                    clusterId = clusterRoute->getGateway();
+                    scheduleAt(simTime() + par("clusterMember").doubleValue(), clusterStateEvent);
+                    bubble(("Become member of " + clusterId.str()).c_str());
+                    return;
+
+                }else if(clusterRoute->state == NodeState::UNDECIDED){
+                    myUndecidedDirectNeighbors += 1;
+
+                    // if hasMoreUndecidedNeighbors or sameNumberButHigherId
+                    if(clusterRoute->undecidedNeighborsNum > neighborBiggestUndecidedNeighbors
+                            || (clusterRoute->undecidedNeighborsNum == neighborBiggestUndecidedNeighbors
+                                    && clusterRoute->getGateway() > idUndecided)){
+                        neighborBiggestUndecidedNeighbors = clusterRoute->undecidedNeighborsNum;
+                        idUndecided = clusterRoute->getGateway();
+                    }
+                }
             }
         }
-        hello->setNeighborsArraySize(oneHopNeighbors.size());
-        int index = 0;
-        for (auto const &n : oneHopNeighbors) {
-            hello->setNeighbors(index, n);
-            index += 1;
+
+        // become leader if number of undecided direct neighbors is greatest along all neighbors
+        if(neighborBiggestUndecidedNeighbors < myUndecidedDirectNeighbors
+                || (neighborBiggestUndecidedNeighbors == myUndecidedDirectNeighbors
+                        && idUndecided < interface80211ptr->getIpv4Address())){
+            myState = NodeState::LEADER;
+            clusterId = interface80211ptr->getIpv4Address();
+            scheduleAt(simTime() + par("clusterLeader").doubleValue(), clusterStateEvent);
+            bubble(("Become leader " + clusterId.str()).c_str());
+            return;
         }
 
-        //new control info for ClusterAlgHello
-        auto packet = new Packet("Hello", hello);
-        auto addressReq = packet->addTag<L3AddressReq>();
-        addressReq->setDestAddress(Ipv4Address(255, 255, 255, 255));
-        addressReq->setSrcAddress(source);
-        packet->addTag<InterfaceReq>()->setInterfaceId(interface80211ptr->getInterfaceId());
-        packet->addTag<PacketProtocolTag>()->setProtocol(&Protocol::manet);
-        packet->addTag<DispatchProtocolReq>()->setProtocol(&Protocol::ipv4);
+        scheduleAt(simTime() + par("clusterUndecided").doubleValue() + uniform(0.0, par("maxVariance").doubleValue()), clusterStateEvent);
 
-        //broadcast to other nodes the hello message
-        send(packet, "ipOut");
-        packet = nullptr;
-        hello = nullptr;
 
-        //schedule new broadcast hello message event
-        scheduleAt(simTime() + helloInterval + broadcastDelay->doubleValue(), event);
-        bubble("Sending new hello message");
+    }else if(myState == NodeState::MEMBER){
+        scheduleAt(simTime() + par("clusterMember").doubleValue(), clusterStateEvent);
+    }else if (myState == NodeState::LEADER){
+        scheduleAt(simTime() + par("clusterLeader").doubleValue(), clusterStateEvent);
+    }else {
+        throw cRuntimeError("Unknown node state");
     }
 }
 
@@ -164,14 +242,14 @@ void ClusterAlg::handleMessageWhenUp(cMessage *msg)
     if (type == MessageType::HELLO) {
         auto recHello = staticPtrCast<ClusterAlgHello>(check_and_cast<Packet*>(msg)->peekData<ClusterAlgHello>()->dupShared());
         receiveHello(recHello);
-
     }
+
     else if (type == MessageType::TOPOLOGY_CONTROL) {
         auto recTopolgyControl = staticPtrCast<ClusterAlgTopologyControl>(
                 check_and_cast<Packet*>(msg)->peekData<ClusterAlgTopologyControl>()->dupShared());
         receiveTopologyControl(recTopolgyControl);
-
     }
+
     else {
         throw cRuntimeError("Unknown message type");
     }
@@ -184,55 +262,60 @@ void ClusterAlg::receiveHello(IntrusivePtr<inet::ClusterAlgHello> &recHello)
     bubble("Received hello message");
     Ipv4Address myIp = interface80211ptr->getProtocolData<Ipv4InterfaceData>()->getIPAddress();
 
-    Ipv4Address src = recHello->getSrcAddress();
-    Ipv4Address next = recHello->getNextAddress();
-    unsigned int msgsequencenumber = recHello->getSequencenumber();
-    int numHops = recHello->getHopdistance();
+    Ipv4Address srcId = recHello->getSrcId();
+    int numHops = recHello->getHopdistance(); // should be == 1
 
-    Ipv4Route *route = rt->findBestMatchingRoute(src);
+    Ipv4Route *route = rt->findBestMatchingRoute(srcId);
     ClusterAlgIpv4Route *clusterAlgRoute = dynamic_cast<ClusterAlgIpv4Route*>(route);
 
-    if (noRoute(route) || isNotBroadcast(route) || hasBetterSeqNumber(clusterAlgRoute, sequencenumber)
-            || hasSameSeqNumButShortestPath(clusterAlgRoute, sequencenumber, numHops)) {
+    // if noRoute or newerSequenceNumber or otherNodeHasBetterMetric
+    if (route == nullptr || clusterAlgRoute == nullptr
+            || (clusterAlgRoute->getIdFromSource() == srcId && clusterAlgRoute->sequencenumber < sequencenumber)
+            || (clusterAlgRoute->getIdFromSource() != srcId && clusterAlgRoute->getMetric() > numHops)) {
         removeOldRoute(clusterAlgRoute);
-        addNewRoute(src, next, numHops, msgsequencenumber);
+        addNewRoute(srcId, srcId, srcId, numHops, recHello);
     }
+
+    numHops += 1;
+    for (int i = 0, j = recHello->getNeighborsNum(); i < j; i++) {
+        Ipv4Address neighbor = recHello->getNeighbors(i);
+
+        route = rt->findBestMatchingRoute(neighbor);
+        clusterAlgRoute = dynamic_cast<ClusterAlgIpv4Route*>(route);
+
+        if (route == nullptr || clusterAlgRoute == nullptr
+                || (clusterAlgRoute->getIdFromSource() == srcId && clusterAlgRoute->sequencenumber < sequencenumber)
+                || (clusterAlgRoute->getIdFromSource() != srcId && clusterAlgRoute->getMetric() > numHops)) {
+            removeOldRoute(clusterAlgRoute);
+            addNewRoute(neighbor, srcId, srcId, numHops, recHello);
+        }
+    }
+
 }
 
-inline bool ClusterAlg::noRoute(Ipv4Route *route)
-{
-    return route == nullptr;
-}
-inline bool ClusterAlg::isNotBroadcast(Ipv4Route *route)
-{
-    return route != nullptr and route->getNetmask() != Ipv4Address::ALLONES_ADDRESS;
-}
-inline bool ClusterAlg::hasBetterSeqNumber(ClusterAlgIpv4Route *route, unsigned int seqNum)
-{
-    return route != nullptr and route->getSequencenumber() < seqNum;
-}
-inline bool ClusterAlg::hasSameSeqNumButShortestPath(ClusterAlgIpv4Route *route, unsigned int seqNum, int hopsNum)
-{
-    return route != nullptr and route->getSequencenumber() == seqNum and route->getMetric() == hopsNum;
-}
-inline bool ClusterAlg::removeOldRoute(ClusterAlgIpv4Route *route)
+inline void ClusterAlg::removeOldRoute(ClusterAlgIpv4Route *route)
 {
     if (route != nullptr) {
         rt->deleteRoute(route);
     }
 }
 
-void ClusterAlg::addNewRoute(Ipv4Address src, Ipv4Address next, int metric, unsigned int msgSeq)
+void ClusterAlg::addNewRoute(Ipv4Address dest, Ipv4Address next,
+        Ipv4Address source, int metric, IntrusivePtr<inet::ClusterAlgHello> &recHello)
 {
     ClusterAlgIpv4Route *e = new ClusterAlgIpv4Route();
-    e->setDestination(src);
-    e->setNetmask(Ipv4Address::ALLONES_ADDRESS);
+    e->setDestination(dest);
     e->setGateway(next);
+    e->setSourceFromId(source);
+    e->setMetric(metric);
+    e->sequencenumber = recHello->getSequencenumber();
+    e->undecidedNeighborsNum = recHello->getUndecidedNeighborsNum();
+    e->state = recHello->getState();
+    e->setExpiryTime(simTime() + routeLifetime);
+
+    e->setNetmask(Ipv4Address::ALLONES_ADDRESS);
     e->setInterface(interface80211ptr);
     e->setSourceType(IRoute::MANET);
-    e->setMetric(metric);
-    e->setSequencenumber(msgSeq);
-    e->setExpiryTime(simTime() + routeLifetime);
     rt->addRoute(e);
 }
 

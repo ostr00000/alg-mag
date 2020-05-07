@@ -65,8 +65,6 @@ enum MessageType {
  * class ClusterAlgBase extends FieldsChunk
  * {
  *     MessageType messageType;
- *     Ipv4Address srcAddress; // not used
- *     Ipv4Address nextAddress;//not used
  *     unsigned int sequencenumber;
  *     int hopdistance;
  *     Ipv4Address srcId;
@@ -77,8 +75,6 @@ class INET_API ClusterAlgBase : public ::inet::FieldsChunk
 {
   protected:
     inet::MessageType messageType = static_cast<inet::MessageType>(-1);
-    Ipv4Address srcAddress;
-    Ipv4Address nextAddress;
     unsigned int sequencenumber = 0;
     int hopdistance = 0;
     Ipv4Address srcId;
@@ -102,12 +98,6 @@ class INET_API ClusterAlgBase : public ::inet::FieldsChunk
     // field getter/setter methods
     virtual inet::MessageType getMessageType() const;
     virtual void setMessageType(inet::MessageType messageType);
-    virtual const Ipv4Address& getSrcAddress() const;
-    virtual Ipv4Address& getSrcAddressForUpdate() { handleChange();return const_cast<Ipv4Address&>(const_cast<ClusterAlgBase*>(this)->getSrcAddress());}
-    virtual void setSrcAddress(const Ipv4Address& srcAddress);
-    virtual const Ipv4Address& getNextAddress() const;
-    virtual Ipv4Address& getNextAddressForUpdate() { handleChange();return const_cast<Ipv4Address&>(const_cast<ClusterAlgBase*>(this)->getNextAddress());}
-    virtual void setNextAddress(const Ipv4Address& nextAddress);
     virtual unsigned int getSequencenumber() const;
     virtual void setSequencenumber(unsigned int sequencenumber);
     virtual int getHopdistance() const;
@@ -121,24 +111,24 @@ inline void doParsimPacking(omnetpp::cCommBuffer *b, const ClusterAlgBase& obj) 
 inline void doParsimUnpacking(omnetpp::cCommBuffer *b, ClusterAlgBase& obj) {obj.parsimUnpack(b);}
 
 /**
- * Enum generated from <tt>inet/routing/cluster_alg/clusterAlgMessages.msg:24</tt> by nedtool.
+ * Enum generated from <tt>inet/routing/cluster_alg/clusterAlgMessages.msg:22</tt> by nedtool.
  * <pre>
  * enum NodeState
  * {
  *     UNDECIDED = 1;
- *     LIDER = 2;
+ *     LEADER = 2;
  *     MEMBER = 3;
  * }
  * </pre>
  */
 enum NodeState {
     UNDECIDED = 1,
-    LIDER = 2,
+    LEADER = 2,
     MEMBER = 3
 };
 
 /**
- * Class generated from <tt>inet/routing/cluster_alg/clusterAlgMessages.msg:30</tt> by nedtool.
+ * Class generated from <tt>inet/routing/cluster_alg/clusterAlgMessages.msg:28</tt> by nedtool.
  * <pre>
  * class ClusterAlgHello extends ClusterAlgBase
  * {
@@ -200,7 +190,7 @@ inline void doParsimPacking(omnetpp::cCommBuffer *b, const ClusterAlgHello& obj)
 inline void doParsimUnpacking(omnetpp::cCommBuffer *b, ClusterAlgHello& obj) {obj.parsimUnpack(b);}
 
 /**
- * Class generated from <tt>inet/routing/cluster_alg/clusterAlgMessages.msg:38</tt> by nedtool.
+ * Class generated from <tt>inet/routing/cluster_alg/clusterAlgMessages.msg:36</tt> by nedtool.
  * <pre>
  * class ClusterAlgTopologyControl extends ClusterAlgBase
  * {
