@@ -6,7 +6,7 @@ import inet.networklayer.ipv4.RoutingTableRecorder;
 import inet.routing.cluster_alg.ClusterAlgRouter;
 import inet.physicallayer.unitdisk.UnitDiskRadioMedium;
 import inet.visualizer.contract.IIntegratedVisualizer;
-import inet.visualizer.integrated.IntegratedCanvasVisualizer;
+import inet.visualizer.integrated.IntegratedVisualizer;
 import inet.environment.common.PhysicalEnvironment;
 import inet.physicallayer.contract.packetlevel.IRadioMedium;
 
@@ -38,7 +38,7 @@ network ClusterAlgNetwork
             parameters:
                 @display("i=device/pocketpc_s;r=,,#707070");
         }
-		visualizer: IntegratedCanvasVisualizer {
+		visualizer: IntegratedVisualizer {
             parameters:
                 @display("p=-100,500");
         }
