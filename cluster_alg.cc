@@ -41,6 +41,7 @@ void ClusterAlg::initialize(int stage)
 
         WATCH(myState);
         WATCH(clusterId);
+        WATCH(myIp);
 
     }
     else if (stage == INITSTAGE_ROUTING_PROTOCOLS) {
@@ -92,6 +93,7 @@ void ClusterAlg::start()
     scheduleAt(simTime() + uniform(0.0, par("maxVariance").doubleValue()), helloEvent);
     myState = NodeState::UNDECIDED;
     clusterId = Ipv4Address::UNSPECIFIED_ADDRESS;
+    myIp = interface80211ptr->getIpv4Address();
 
     scheduleAt(simTime() + par("clusterUndecidedFirstTime").doubleValue() + uniform(0.0, par("maxVariance").doubleValue()), clusterStateEvent);
 
@@ -165,34 +167,37 @@ void ClusterAlg::handleHelloEvent()
 
 void ClusterAlg::handleClusterStateEvent()
 {
-    if(myState == NodeState::UNDECIDED){
+    if (myState == NodeState::UNDECIDED) {
         int myUndecidedDirectNeighbors = 0;
         int neighborBiggestUndecidedNeighbors = -1;
         Ipv4Address idUndecided = Ipv4Address::UNSPECIFIED_ADDRESS;
 
         // find any leader
-        for(int i=0, j=rt->getNumRoutes();i<j;i++){
+        for (int i = 0, j = rt->getNumRoutes(); i < j; i++) {
             Ipv4Route *route = rt->getRoute(i);
             ClusterAlgIpv4Route *clusterRoute = dynamic_cast<ClusterAlgIpv4Route*>(route);
-            if(clusterRoute == nullptr){
+            if (clusterRoute == nullptr) {
                 continue;
             }
             // if isDirectNeighbor and isLeader
-            if (clusterRoute->getMetric() == 1){
-                if (clusterRoute->state == NodeState::LEADER){
+            if (clusterRoute->distance == 1) {
+                if (clusterRoute->state == NodeState::LEADER) {
                     myState = NodeState::MEMBER;
                     clusterId = clusterRoute->getGateway();
                     scheduleAt(simTime() + par("clusterMember").doubleValue(), clusterStateEvent);
                     bubble(("Become member of " + clusterId.str()).c_str());
+
+                    cancelEvent(helloEvent);
+                    scheduleAt(simTime(), helloEvent);
                     return;
 
-                }else if(clusterRoute->state == NodeState::UNDECIDED){
+                }
+                else if (clusterRoute->state == NodeState::UNDECIDED) {
                     myUndecidedDirectNeighbors += 1;
 
                     // if hasMoreUndecidedNeighbors or sameNumberButHigherId
-                    if(clusterRoute->undecidedNeighborsNum > neighborBiggestUndecidedNeighbors
-                            || (clusterRoute->undecidedNeighborsNum == neighborBiggestUndecidedNeighbors
-                                    && clusterRoute->getGateway() > idUndecided)){
+                    if (clusterRoute->undecidedNeighborsNum > neighborBiggestUndecidedNeighbors
+                            || (clusterRoute->undecidedNeighborsNum == neighborBiggestUndecidedNeighbors && clusterRoute->getGateway() > idUndecided)) {
                         neighborBiggestUndecidedNeighbors = clusterRoute->undecidedNeighborsNum;
                         idUndecided = clusterRoute->getGateway();
                     }
@@ -201,24 +206,81 @@ void ClusterAlg::handleClusterStateEvent()
         }
 
         // become leader if number of undecided direct neighbors is greatest along all neighbors
-        if(neighborBiggestUndecidedNeighbors < myUndecidedDirectNeighbors
-                || (neighborBiggestUndecidedNeighbors == myUndecidedDirectNeighbors
-                        && idUndecided < interface80211ptr->getIpv4Address())){
+        if (neighborBiggestUndecidedNeighbors < myUndecidedDirectNeighbors
+                || (neighborBiggestUndecidedNeighbors == myUndecidedDirectNeighbors && idUndecided > interface80211ptr->getIpv4Address())) {
             myState = NodeState::LEADER;
             clusterId = interface80211ptr->getIpv4Address();
             scheduleAt(simTime() + par("clusterLeader").doubleValue(), clusterStateEvent);
             bubble(("Become leader " + clusterId.str()).c_str());
+
+            cancelEvent(helloEvent);
+            scheduleAt(simTime(), helloEvent); // TODO topology message too
+
             return;
         }
 
         scheduleAt(simTime() + par("clusterUndecided").doubleValue() + uniform(0.0, par("maxVariance").doubleValue()), clusterStateEvent);
 
-
-    }else if(myState == NodeState::MEMBER){
+    }
+    else if (myState == NodeState::MEMBER) {
         scheduleAt(simTime() + par("clusterMember").doubleValue(), clusterStateEvent);
-    }else if (myState == NodeState::LEADER){
+    }
+    else if (myState == NodeState::LEADER) {
+        int myNeighborsNum = 0;
+        std::map<Ipv4Address, ClusterAlgIpv4Route*> leadersIdToRoute;
+        // find all neighbor leaders
+        for (int i = 0, j = rt->getNumRoutes(); i < j; i++) {
+            Ipv4Route *route = rt->getRoute(i);
+            ClusterAlgIpv4Route *clusterRoute = dynamic_cast<ClusterAlgIpv4Route*>(route);
+            if (clusterRoute != nullptr) {
+                if (clusterRoute->distance == 1) {
+                    myNeighborsNum += 1;
+                    if (clusterRoute->state == NodeState::LEADER) {
+                        leadersIdToRoute[clusterRoute->getGateway()] = clusterRoute;
+                    }
+                }
+            }
+        }
+
+        // update neighbor leaders
+        for (auto it = counterOfSeenNeighborsLeaders.begin(); it != counterOfSeenNeighborsLeaders.end(); it++) {
+            auto otherLedaerId = it->first;
+            auto search = leadersIdToRoute.find(otherLedaerId);
+            // if leader was seen also previously => update
+            if (search != leadersIdToRoute.end()) {
+                leadersIdToRoute.erase(otherLedaerId);
+                it->second += 1;
+
+                // if seen too many times => destroy cluster
+                if (it->second > par("maxLeaderRepeats").intValue()) {
+                    //check who should destroy -> my cluster or their
+                    if (search->second->neighborsNum > myNeighborsNum
+                            || (search->second->neighborsNum == myNeighborsNum && search->first < interface80211ptr->getIpv4Address())) {
+                        myState = NodeState::UNDECIDED;
+                        clusterId = Ipv4Address::UNSPECIFIED_ADDRESS;
+                        bubble(("Destroying cluster -> become undecided" + clusterId.str()).c_str());
+
+                        scheduleAt(simTime() + par("clusterUndecided").doubleValue(), clusterStateEvent);
+                        counterOfSeenNeighborsLeaders.clear();
+                        return;
+                    }
+                }
+            }
+            // leader is already disappeared
+            else {
+                //https://stackoverflow.com/questions/4600567/how-can-i-delete-elements-of-a-stdmap-with-an-iterator
+                counterOfSeenNeighborsLeaders.erase(it);
+            }
+        }
+
+        // add new leaders
+        for (auto newLeader = leadersIdToRoute.begin(); newLeader != leadersIdToRoute.end(); newLeader++) {
+            counterOfSeenNeighborsLeaders[newLeader->first] = 1;
+        }
+
         scheduleAt(simTime() + par("clusterLeader").doubleValue(), clusterStateEvent);
-    }else {
+    }
+    else {
         throw cRuntimeError("Unknown node state");
     }
 }
@@ -300,17 +362,18 @@ inline void ClusterAlg::removeOldRoute(ClusterAlgIpv4Route *route)
     }
 }
 
-void ClusterAlg::addNewRoute(Ipv4Address dest, Ipv4Address next,
-        Ipv4Address source, int metric, IntrusivePtr<inet::ClusterAlgHello> &recHello)
+void ClusterAlg::addNewRoute(Ipv4Address dest, Ipv4Address next, Ipv4Address source, int distance, IntrusivePtr<inet::ClusterAlgHello> &recHello)
 {
     ClusterAlgIpv4Route *e = new ClusterAlgIpv4Route();
     e->setDestination(dest);
     e->setGateway(next);
     e->setSourceFromId(source);
-    e->setMetric(metric);
+    e->setMetric(distance);
+    e->distance = distance;
     e->sequencenumber = recHello->getSequencenumber();
     e->undecidedNeighborsNum = recHello->getUndecidedNeighborsNum();
     e->state = recHello->getState();
+    e->neighborsNum = recHello->getNeighborsArraySize();
     e->setExpiryTime(simTime() + routeLifetime);
 
     e->setNetmask(Ipv4Address::ALLONES_ADDRESS);

@@ -34,6 +34,8 @@ public:
     unsigned int sequencenumber; // originated from destination. Ensures loop freeness.
     NodeState state;
     int undecidedNeighborsNum = -1;
+    int distance;
+    int neighborsNum;
 
 public:
     virtual bool isValid() const override
@@ -77,10 +79,12 @@ private:
     unsigned int sequencenumber = 0;
     simtime_t routeLifetime;
     cModule *host = nullptr;
+
+    Ipv4Address myIp;
 public:
     NodeState myState;
     Ipv4Address clusterId;
-    std::list<Ipv4Address> neighbors;
+    std::map<Ipv4Address, int> counterOfSeenNeighborsLeaders;
 
 protected:
     simtime_t helloInterval;
@@ -94,7 +98,7 @@ public:
 protected:
     void receiveHello(IntrusivePtr<inet::ClusterAlgHello> &recHello);
     void receiveTopologyControl(IntrusivePtr<inet::ClusterAlgTopologyControl> &topologyControl);
-    void addNewRoute(Ipv4Address dest, Ipv4Address next, Ipv4Address source, int metric, IntrusivePtr<inet::ClusterAlgHello> &recHello);
+    void addNewRoute(Ipv4Address dest, Ipv4Address next, Ipv4Address source, int distance, IntrusivePtr<inet::ClusterAlgHello> &recHello);
     inline void removeOldRoute(ClusterAlgIpv4Route *route);
 
     void handleHelloEvent();
