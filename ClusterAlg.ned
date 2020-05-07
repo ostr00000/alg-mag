@@ -19,6 +19,7 @@ simple ClusterAlg like IManetRouting
         double clusterUndecided @unit(s)= default(1s);
 		double clusterMember @unit(s)= default(5s);
 		double clusterLeader @unit(s)= default(5s);
+		int maxLeaderRepeats = default(4);
 		
 	gates:
         input ipIn;
