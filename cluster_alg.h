@@ -69,6 +69,11 @@ public:
 class INET_API ClusterAlg : public RoutingProtocolBase
 {
 private:
+    simsignal_t helloSignal;
+    simsignal_t topologyControlSignal;
+    simsignal_t stateChangedSignal;
+    simsignal_t clusterDestroyedSignal;
+
     cMessage *helloEvent = nullptr;
     cMessage *clusterStateEvent = nullptr;
     cMessage *topolgyControlEvent = nullptr;
@@ -103,6 +108,7 @@ protected:
 
     void handleHelloEvent();
     void handleClusterStateEvent();
+    void refreshTextFromState();
 
     virtual int numInitStages() const override
     {

@@ -43,6 +43,11 @@ void ClusterAlg::initialize(int stage)
         WATCH(clusterId);
         WATCH(myIp);
 
+        helloSignal = registerSignal("helloSignal");
+        topologyControlSignal = registerSignal("topologyControlSignal");
+        stateChangedSignal = registerSignal("stateChangedSignal");
+        clusterDestroyedSignal = registerSignal("clusterDestroyedSignal");
+
     }
     else if (stage == INITSTAGE_ROUTING_PROTOCOLS) {
         registerService(Protocol::manet, nullptr, gate("ipIn"));
@@ -111,14 +116,51 @@ void ClusterAlg::handleSelfMessage(cMessage *msg)
         handleHelloEvent();
     }
     else if (msg == clusterStateEvent) {
+        NodeState stateBefore = myState;
+
         handleClusterStateEvent();
+        refreshTextFromState();
+
+        if (stateBefore != myState){
+            emit(stateChangedSignal, 1);
+            if (stateBefore == NodeState::LEADER){
+                emit(clusterDestroyedSignal, 1);
+            }
+        }
     }
+}
+
+void ClusterAlg::refreshTextFromState()
+{
+    char label[50];
+    char color[10] = "#RRGGBB";
+
+    std::hash<std::string> h;
+    int c = h(clusterId.str(true));
+    std::stringstream sstream;
+    sstream << std::hex << c;
+    std::string result = sstream.str() + "1234567";
+    for (int i = 1; i <= 6; i++) {
+        color[i] = result[i];
+    }
+
+    if (myState == NodeState::UNDECIDED) {
+        sprintf(label, "Undecided");
+    }
+    else if (myState == NodeState::LEADER) {
+        sprintf(label, "Leader [%d]", clusterId.getInt());
+    }
+    else if (myState == NodeState::MEMBER) {
+        sprintf(label, "Member [%d]", clusterId.getInt());
+    }
+
+    getParentModule()->getDisplayString().setTagArg("t", 0, label);
+    getParentModule()->getDisplayString().setTagArg("t", 2, color);
 }
 
 void ClusterAlg::handleHelloEvent()
 {
     auto hello = makeShared<ClusterAlgHello>();
-    rt->purge(); // remove invalid ipv4route
 
     //        Ipv4Address source = interface80211ptr->getProtocolData<Ipv4InterfaceData>()->getIPAddress();
     hello->setChunkLength(b(128)); ///size of Hello message in bits
@@ -223,7 +265,35 @@ void ClusterAlg::handleClusterStateEvent()
 
     }
     else if (myState == NodeState::MEMBER) {
-        scheduleAt(simTime() + par("clusterMember").doubleValue(), clusterStateEvent);
+        bool myLeaderIsInRange = false;
+
+        //check if current leader is in range
+        for (int i = 0, j = rt->getNumRoutes(); i < j; i++) {
+            Ipv4Route *route = rt->getRoute(i);
+            ClusterAlgIpv4Route *clusterRoute = dynamic_cast<ClusterAlgIpv4Route*>(route);
+            if (clusterRoute == nullptr) {
+                continue;
+            }
+            // if isDirectNeighbor and isLeader
+            if (clusterRoute->distance == 1) {
+                if (clusterRoute->state == NodeState::LEADER) {
+                    if (clusterId == clusterRoute->getGateway()) {
+                        myLeaderIsInRange = true;
+                        break;
+                    }
+                }
+            }
+        }
+
+        if (myLeaderIsInRange) {
+            scheduleAt(simTime() + par("clusterMember").doubleValue(), clusterStateEvent);
+        }
+        else {
+            bubble(("Lost cluster leader-> become undecided" + clusterId.str()).c_str());
+            myState = NodeState::UNDECIDED;
+            clusterId = Ipv4Address::UNSPECIFIED_ADDRESS;
+            scheduleAt(simTime(), clusterStateEvent);
+        }
     }
     else if (myState == NodeState::LEADER) {
         int myNeighborsNum = 0;
@@ -287,6 +357,8 @@ void ClusterAlg::handleClusterStateEvent()
 
 void ClusterAlg::handleMessageWhenUp(cMessage *msg)
 {
+    rt->purge(); // remove invalid ipv4route
+
     if (msg->isSelfMessage()) {
         handleSelfMessage(msg);
         return;
@@ -302,11 +374,13 @@ void ClusterAlg::handleMessageWhenUp(cMessage *msg)
     auto type = staticPtrCast<ClusterAlgBase>(check_and_cast<Packet*>(msg)->peekData<ClusterAlgBase>()->dupShared())->getMessageType();
 
     if (type == MessageType::HELLO) {
+        emit(helloSignal, 1);
         auto recHello = staticPtrCast<ClusterAlgHello>(check_and_cast<Packet*>(msg)->peekData<ClusterAlgHello>()->dupShared());
         receiveHello(recHello);
     }
 
     else if (type == MessageType::TOPOLOGY_CONTROL) {
+        emit(topologyControlSignal, 1);
         auto recTopolgyControl = staticPtrCast<ClusterAlgTopologyControl>(
                 check_and_cast<Packet*>(msg)->peekData<ClusterAlgTopologyControl>()->dupShared());
         receiveTopologyControl(recTopolgyControl);
