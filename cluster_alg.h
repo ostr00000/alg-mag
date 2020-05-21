@@ -36,6 +36,9 @@ public:
     int undecidedNeighborsNum = -1;
     int distance;
     int neighborsNum;
+    Ipv4Address clusterId;
+    std::vector<Ipv4Address> neighborsClusterIds;
+    std::vector<Ipv4Address> neighborsIds;
 
 public:
     virtual bool isValid() const override
@@ -56,6 +59,8 @@ public:
     {
         NodeObject *nObj = new NodeObject();
         nObj->address = id;
+        simtime_t expiryTime;  // time the routing entry is valid until
+
         setSource(nObj);
     }
     Ipv4Address getIdFromSource()
@@ -64,6 +69,15 @@ public:
         return src->address;
     }
 
+};
+
+class ClusterInfo : public cObject
+{
+public:
+    Ipv4Address clusterId;
+    std::vector<Ipv4Address> members;
+    simtime_t expiryTime;
+    unsigned int seq;
 };
 
 class INET_API ClusterAlg : public RoutingProtocolBase
@@ -75,6 +89,7 @@ private:
     simsignal_t clusterDestroyedSignal;
 
     cMessage *helloEvent = nullptr;
+    cMessage *tcEvent = nullptr;
     cMessage *clusterStateEvent = nullptr;
     cMessage *topolgyControlEvent = nullptr;
 
@@ -82,6 +97,7 @@ private:
     InterfaceEntry *interface80211ptr = nullptr;
     int interfaceId = -1;
     unsigned int sequencenumber = 0;
+    unsigned int topologySeq = 0;
     simtime_t routeLifetime;
     cModule *host = nullptr;
 
@@ -91,8 +107,12 @@ public:
     Ipv4Address clusterId;
     std::map<Ipv4Address, int> counterOfSeenNeighborsLeaders;
 
+    std::map<Ipv4Address, ClusterInfo*> addressToCluster;
+    std::vector<ClusterInfo*> clusterInfoVec;
+
 protected:
     simtime_t helloInterval;
+    simtime_t tcInterval;
     IInterfaceTable *ift = nullptr;
     IIpv4RoutingTable *rt = nullptr;
 
@@ -103,10 +123,17 @@ public:
 protected:
     void receiveHello(IntrusivePtr<inet::ClusterAlgHello> &recHello);
     void receiveTopologyControl(IntrusivePtr<inet::ClusterAlgTopologyControl> &topologyControl);
-    void addNewRoute(Ipv4Address dest, Ipv4Address next, Ipv4Address source, int distance, IntrusivePtr<inet::ClusterAlgHello> &recHello);
+    ClusterAlgIpv4Route* addNewRoute(Ipv4Address dest, Ipv4Address next, Ipv4Address source, int distance,
+            IntrusivePtr<inet::ClusterAlgHello> &recHello);
     inline void removeOldRoute(ClusterAlgIpv4Route *route);
 
     void handleHelloEvent();
+    void handleTopolgyEvent();
+
+    void forwardTC(IntrusivePtr<inet::ClusterAlgTopologyControl> &topologyControl, bool resetForwardNodes);
+    void setAllowedToForwardNodes(IntrusivePtr<inet::ClusterAlgTopologyControl> &tc);
+    bool updateTopologyControl(IntrusivePtr<inet::ClusterAlgTopologyControl> &topologyControl);
+    void scheduleTopologyControl(simtime_t scheduleTime);
     void handleClusterStateEvent();
     void refreshTextFromState();
 

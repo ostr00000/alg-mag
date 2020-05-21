@@ -31,9 +31,11 @@ class ClusterAlgHello extends ClusterAlgBase {
     NodeState state;
     Ipv4Address clusterHeadId;
     Ipv4Address neighbors[];
+    Ipv4Address neighborsCluster[];
 }
 
 class ClusterAlgTopologyControl extends ClusterAlgBase {
-	    
+	Ipv4Address allowedToForward[];
+	Ipv4Address members[];
 }
 

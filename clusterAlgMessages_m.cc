@@ -589,6 +589,7 @@ ClusterAlgHello::ClusterAlgHello(const ClusterAlgHello& other) : ::inet::Cluster
 ClusterAlgHello::~ClusterAlgHello()
 {
     delete [] this->neighbors;
+    delete [] this->neighborsCluster;
 }
 
 ClusterAlgHello& ClusterAlgHello::operator=(const ClusterAlgHello& other)
@@ -611,6 +612,12 @@ void ClusterAlgHello::copy(const ClusterAlgHello& other)
     for (size_t i = 0; i < neighbors_arraysize; i++) {
         this->neighbors[i] = other.neighbors[i];
     }
+    delete [] this->neighborsCluster;
+    this->neighborsCluster = (other.neighborsCluster_arraysize==0) ? nullptr : new Ipv4Address[other.neighborsCluster_arraysize];
+    neighborsCluster_arraysize = other.neighborsCluster_arraysize;
+    for (size_t i = 0; i < neighborsCluster_arraysize; i++) {
+        this->neighborsCluster[i] = other.neighborsCluster[i];
+    }
 }
 
 void ClusterAlgHello::parsimPack(omnetpp::cCommBuffer *b) const
@@ -622,6 +629,8 @@ void ClusterAlgHello::parsimPack(omnetpp::cCommBuffer *b) const
     doParsimPacking(b,this->clusterHeadId);
     b->pack(neighbors_arraysize);
     doParsimArrayPacking(b,this->neighbors,neighbors_arraysize);
+    b->pack(neighborsCluster_arraysize);
+    doParsimArrayPacking(b,this->neighborsCluster,neighborsCluster_arraysize);
 }
 
 void ClusterAlgHello::parsimUnpack(omnetpp::cCommBuffer *b)
@@ -638,6 +647,14 @@ void ClusterAlgHello::parsimUnpack(omnetpp::cCommBuffer *b)
     } else {
         this->neighbors = new Ipv4Address[neighbors_arraysize];
         doParsimArrayUnpacking(b,this->neighbors,neighbors_arraysize);
+    }
+    delete [] this->neighborsCluster;
+    b->unpack(neighborsCluster_arraysize);
+    if (neighborsCluster_arraysize == 0) {
+        this->neighborsCluster = nullptr;
+    } else {
+        this->neighborsCluster = new Ipv4Address[neighborsCluster_arraysize];
+        doParsimArrayUnpacking(b,this->neighborsCluster,neighborsCluster_arraysize);
     }
 }
 
@@ -753,6 +770,74 @@ void ClusterAlgHello::eraseNeighbors(size_t k)
     neighbors_arraysize = newSize;
 }
 
+size_t ClusterAlgHello::getNeighborsClusterArraySize() const
+{
+    return neighborsCluster_arraysize;
+}
+
+const Ipv4Address& ClusterAlgHello::getNeighborsCluster(size_t k) const
+{
+    if (k >= neighborsCluster_arraysize) throw omnetpp::cRuntimeError("Array of size neighborsCluster_arraysize indexed by %lu", (unsigned long)k);
+    return this->neighborsCluster[k];
+}
+
+void ClusterAlgHello::setNeighborsClusterArraySize(size_t newSize)
+{
+    handleChange();
+    Ipv4Address *neighborsCluster2 = (newSize==0) ? nullptr : new Ipv4Address[newSize];
+    size_t minSize = neighborsCluster_arraysize < newSize ? neighborsCluster_arraysize : newSize;
+    for (size_t i = 0; i < minSize; i++)
+        neighborsCluster2[i] = this->neighborsCluster[i];
+    delete [] this->neighborsCluster;
+    this->neighborsCluster = neighborsCluster2;
+    neighborsCluster_arraysize = newSize;
+}
+
+void ClusterAlgHello::setNeighborsCluster(size_t k, const Ipv4Address& neighborsCluster)
+{
+    if (k >= neighborsCluster_arraysize) throw omnetpp::cRuntimeError("Array of size  indexed by %lu", (unsigned long)k);
+    handleChange();
+    this->neighborsCluster[k] = neighborsCluster;
+}
+
+void ClusterAlgHello::insertNeighborsCluster(size_t k, const Ipv4Address& neighborsCluster)
+{
+    handleChange();
+    if (k > neighborsCluster_arraysize) throw omnetpp::cRuntimeError("Array of size  indexed by %lu", (unsigned long)k);
+    size_t newSize = neighborsCluster_arraysize + 1;
+    Ipv4Address *neighborsCluster2 = new Ipv4Address[newSize];
+    size_t i;
+    for (i = 0; i < k; i++)
+        neighborsCluster2[i] = this->neighborsCluster[i];
+    neighborsCluster2[k] = neighborsCluster;
+    for (i = k + 1; i < newSize; i++)
+        neighborsCluster2[i] = this->neighborsCluster[i-1];
+    delete [] this->neighborsCluster;
+    this->neighborsCluster = neighborsCluster2;
+    neighborsCluster_arraysize = newSize;
+}
+
+void ClusterAlgHello::insertNeighborsCluster(const Ipv4Address& neighborsCluster)
+{
+    insertNeighborsCluster(neighborsCluster_arraysize, neighborsCluster);
+}
+
+void ClusterAlgHello::eraseNeighborsCluster(size_t k)
+{
+    if (k >= neighborsCluster_arraysize) throw omnetpp::cRuntimeError("Array of size  indexed by %lu", (unsigned long)k);
+    handleChange();
+    size_t newSize = neighborsCluster_arraysize - 1;
+    Ipv4Address *neighborsCluster2 = (newSize == 0) ? nullptr : new Ipv4Address[newSize];
+    size_t i;
+    for (i = 0; i < k; i++)
+        neighborsCluster2[i] = this->neighborsCluster[i];
+    for (i = k; i < newSize; i++)
+        neighborsCluster2[i] = this->neighborsCluster[i+1];
+    delete [] this->neighborsCluster;
+    this->neighborsCluster = neighborsCluster2;
+    neighborsCluster_arraysize = newSize;
+}
+
 class ClusterAlgHelloDescriptor : public omnetpp::cClassDescriptor
 {
   private:
@@ -763,6 +848,7 @@ class ClusterAlgHelloDescriptor : public omnetpp::cClassDescriptor
         FIELD_state,
         FIELD_clusterHeadId,
         FIELD_neighbors,
+        FIELD_neighborsCluster,
     };
   public:
     ClusterAlgHelloDescriptor();
@@ -825,7 +911,7 @@ const char *ClusterAlgHelloDescriptor::getProperty(const char *propertyname) con
 int ClusterAlgHelloDescriptor::getFieldCount() const
 {
     omnetpp::cClassDescriptor *basedesc = getBaseClassDescriptor();
-    return basedesc ? 5+basedesc->getFieldCount() : 5;
+    return basedesc ? 6+basedesc->getFieldCount() : 6;
 }
 
 unsigned int ClusterAlgHelloDescriptor::getFieldTypeFlags(int field) const
@@ -842,8 +928,9 @@ unsigned int ClusterAlgHelloDescriptor::getFieldTypeFlags(int field) const
         FD_ISEDITABLE,    // FIELD_state
         0,    // FIELD_clusterHeadId
         FD_ISARRAY,    // FIELD_neighbors
+        FD_ISARRAY,    // FIELD_neighborsCluster
     };
-    return (field >= 0 && field < 5) ? fieldTypeFlags[field] : 0;
+    return (field >= 0 && field < 6) ? fieldTypeFlags[field] : 0;
 }
 
 const char *ClusterAlgHelloDescriptor::getFieldName(int field) const
@@ -860,8 +947,9 @@ const char *ClusterAlgHelloDescriptor::getFieldName(int field) const
         "state",
         "clusterHeadId",
         "neighbors",
+        "neighborsCluster",
     };
-    return (field >= 0 && field < 5) ? fieldNames[field] : nullptr;
+    return (field >= 0 && field < 6) ? fieldNames[field] : nullptr;
 }
 
 int ClusterAlgHelloDescriptor::findField(const char *fieldName) const
@@ -873,6 +961,7 @@ int ClusterAlgHelloDescriptor::findField(const char *fieldName) const
     if (fieldName[0] == 's' && strcmp(fieldName, "state") == 0) return base+2;
     if (fieldName[0] == 'c' && strcmp(fieldName, "clusterHeadId") == 0) return base+3;
     if (fieldName[0] == 'n' && strcmp(fieldName, "neighbors") == 0) return base+4;
+    if (fieldName[0] == 'n' && strcmp(fieldName, "neighborsCluster") == 0) return base+5;
     return basedesc ? basedesc->findField(fieldName) : -1;
 }
 
@@ -890,8 +979,9 @@ const char *ClusterAlgHelloDescriptor::getFieldTypeString(int field) const
         "inet::NodeState",    // FIELD_state
         "inet::Ipv4Address",    // FIELD_clusterHeadId
         "inet::Ipv4Address",    // FIELD_neighbors
+        "inet::Ipv4Address",    // FIELD_neighborsCluster
     };
-    return (field >= 0 && field < 5) ? fieldTypeStrings[field] : nullptr;
+    return (field >= 0 && field < 6) ? fieldTypeStrings[field] : nullptr;
 }
 
 const char **ClusterAlgHelloDescriptor::getFieldPropertyNames(int field) const
@@ -938,6 +1028,7 @@ int ClusterAlgHelloDescriptor::getFieldArraySize(void *object, int field) const
     ClusterAlgHello *pp = (ClusterAlgHello *)object; (void)pp;
     switch (field) {
         case FIELD_neighbors: return pp->getNeighborsArraySize();
+        case FIELD_neighborsCluster: return pp->getNeighborsClusterArraySize();
         default: return 0;
     }
 }
@@ -971,6 +1062,7 @@ std::string ClusterAlgHelloDescriptor::getFieldValueAsString(void *object, int f
         case FIELD_state: return enum2string(pp->getState(), "inet::NodeState");
         case FIELD_clusterHeadId: return pp->getClusterHeadId().str();
         case FIELD_neighbors: return pp->getNeighbors(i).str();
+        case FIELD_neighborsCluster: return pp->getNeighborsCluster(i).str();
         default: return "";
     }
 }
@@ -1017,6 +1109,7 @@ void *ClusterAlgHelloDescriptor::getFieldStructValuePointer(void *object, int fi
     switch (field) {
         case FIELD_clusterHeadId: return toVoidPtr(&pp->getClusterHeadId()); break;
         case FIELD_neighbors: return toVoidPtr(&pp->getNeighbors(i)); break;
+        case FIELD_neighborsCluster: return toVoidPtr(&pp->getNeighborsCluster(i)); break;
         default: return nullptr;
     }
 }
@@ -1034,6 +1127,8 @@ ClusterAlgTopologyControl::ClusterAlgTopologyControl(const ClusterAlgTopologyCon
 
 ClusterAlgTopologyControl::~ClusterAlgTopologyControl()
 {
+    delete [] this->allowedToForward;
+    delete [] this->members;
 }
 
 ClusterAlgTopologyControl& ClusterAlgTopologyControl::operator=(const ClusterAlgTopologyControl& other)
@@ -1046,16 +1141,184 @@ ClusterAlgTopologyControl& ClusterAlgTopologyControl::operator=(const ClusterAlg
 
 void ClusterAlgTopologyControl::copy(const ClusterAlgTopologyControl& other)
 {
+    delete [] this->allowedToForward;
+    this->allowedToForward = (other.allowedToForward_arraysize==0) ? nullptr : new Ipv4Address[other.allowedToForward_arraysize];
+    allowedToForward_arraysize = other.allowedToForward_arraysize;
+    for (size_t i = 0; i < allowedToForward_arraysize; i++) {
+        this->allowedToForward[i] = other.allowedToForward[i];
+    }
+    delete [] this->members;
+    this->members = (other.members_arraysize==0) ? nullptr : new Ipv4Address[other.members_arraysize];
+    members_arraysize = other.members_arraysize;
+    for (size_t i = 0; i < members_arraysize; i++) {
+        this->members[i] = other.members[i];
+    }
 }
 
 void ClusterAlgTopologyControl::parsimPack(omnetpp::cCommBuffer *b) const
 {
     ::inet::ClusterAlgBase::parsimPack(b);
+    b->pack(allowedToForward_arraysize);
+    doParsimArrayPacking(b,this->allowedToForward,allowedToForward_arraysize);
+    b->pack(members_arraysize);
+    doParsimArrayPacking(b,this->members,members_arraysize);
 }
 
 void ClusterAlgTopologyControl::parsimUnpack(omnetpp::cCommBuffer *b)
 {
     ::inet::ClusterAlgBase::parsimUnpack(b);
+    delete [] this->allowedToForward;
+    b->unpack(allowedToForward_arraysize);
+    if (allowedToForward_arraysize == 0) {
+        this->allowedToForward = nullptr;
+    } else {
+        this->allowedToForward = new Ipv4Address[allowedToForward_arraysize];
+        doParsimArrayUnpacking(b,this->allowedToForward,allowedToForward_arraysize);
+    }
+    delete [] this->members;
+    b->unpack(members_arraysize);
+    if (members_arraysize == 0) {
+        this->members = nullptr;
+    } else {
+        this->members = new Ipv4Address[members_arraysize];
+        doParsimArrayUnpacking(b,this->members,members_arraysize);
+    }
+}
+
+size_t ClusterAlgTopologyControl::getAllowedToForwardArraySize() const
+{
+    return allowedToForward_arraysize;
+}
+
+const Ipv4Address& ClusterAlgTopologyControl::getAllowedToForward(size_t k) const
+{
+    if (k >= allowedToForward_arraysize) throw omnetpp::cRuntimeError("Array of size allowedToForward_arraysize indexed by %lu", (unsigned long)k);
+    return this->allowedToForward[k];
+}
+
+void ClusterAlgTopologyControl::setAllowedToForwardArraySize(size_t newSize)
+{
+    handleChange();
+    Ipv4Address *allowedToForward2 = (newSize==0) ? nullptr : new Ipv4Address[newSize];
+    size_t minSize = allowedToForward_arraysize < newSize ? allowedToForward_arraysize : newSize;
+    for (size_t i = 0; i < minSize; i++)
+        allowedToForward2[i] = this->allowedToForward[i];
+    delete [] this->allowedToForward;
+    this->allowedToForward = allowedToForward2;
+    allowedToForward_arraysize = newSize;
+}
+
+void ClusterAlgTopologyControl::setAllowedToForward(size_t k, const Ipv4Address& allowedToForward)
+{
+    if (k >= allowedToForward_arraysize) throw omnetpp::cRuntimeError("Array of size  indexed by %lu", (unsigned long)k);
+    handleChange();
+    this->allowedToForward[k] = allowedToForward;
+}
+
+void ClusterAlgTopologyControl::insertAllowedToForward(size_t k, const Ipv4Address& allowedToForward)
+{
+    handleChange();
+    if (k > allowedToForward_arraysize) throw omnetpp::cRuntimeError("Array of size  indexed by %lu", (unsigned long)k);
+    size_t newSize = allowedToForward_arraysize + 1;
+    Ipv4Address *allowedToForward2 = new Ipv4Address[newSize];
+    size_t i;
+    for (i = 0; i < k; i++)
+        allowedToForward2[i] = this->allowedToForward[i];
+    allowedToForward2[k] = allowedToForward;
+    for (i = k + 1; i < newSize; i++)
+        allowedToForward2[i] = this->allowedToForward[i-1];
+    delete [] this->allowedToForward;
+    this->allowedToForward = allowedToForward2;
+    allowedToForward_arraysize = newSize;
+}
+
+void ClusterAlgTopologyControl::insertAllowedToForward(const Ipv4Address& allowedToForward)
+{
+    insertAllowedToForward(allowedToForward_arraysize, allowedToForward);
+}
+
+void ClusterAlgTopologyControl::eraseAllowedToForward(size_t k)
+{
+    if (k >= allowedToForward_arraysize) throw omnetpp::cRuntimeError("Array of size  indexed by %lu", (unsigned long)k);
+    handleChange();
+    size_t newSize = allowedToForward_arraysize - 1;
+    Ipv4Address *allowedToForward2 = (newSize == 0) ? nullptr : new Ipv4Address[newSize];
+    size_t i;
+    for (i = 0; i < k; i++)
+        allowedToForward2[i] = this->allowedToForward[i];
+    for (i = k; i < newSize; i++)
+        allowedToForward2[i] = this->allowedToForward[i+1];
+    delete [] this->allowedToForward;
+    this->allowedToForward = allowedToForward2;
+    allowedToForward_arraysize = newSize;
+}
+
+size_t ClusterAlgTopologyControl::getMembersArraySize() const
+{
+    return members_arraysize;
+}
+
+const Ipv4Address& ClusterAlgTopologyControl::getMembers(size_t k) const
+{
+    if (k >= members_arraysize) throw omnetpp::cRuntimeError("Array of size members_arraysize indexed by %lu", (unsigned long)k);
+    return this->members[k];
+}
+
+void ClusterAlgTopologyControl::setMembersArraySize(size_t newSize)
+{
+    handleChange();
+    Ipv4Address *members2 = (newSize==0) ? nullptr : new Ipv4Address[newSize];
+    size_t minSize = members_arraysize < newSize ? members_arraysize : newSize;
+    for (size_t i = 0; i < minSize; i++)
+        members2[i] = this->members[i];
+    delete [] this->members;
+    this->members = members2;
+    members_arraysize = newSize;
+}
+
+void ClusterAlgTopologyControl::setMembers(size_t k, const Ipv4Address& members)
+{
+    if (k >= members_arraysize) throw omnetpp::cRuntimeError("Array of size  indexed by %lu", (unsigned long)k);
+    handleChange();
+    this->members[k] = members;
+}
+
+void ClusterAlgTopologyControl::insertMembers(size_t k, const Ipv4Address& members)
+{
+    handleChange();
+    if (k > members_arraysize) throw omnetpp::cRuntimeError("Array of size  indexed by %lu", (unsigned long)k);
+    size_t newSize = members_arraysize + 1;
+    Ipv4Address *members2 = new Ipv4Address[newSize];
+    size_t i;
+    for (i = 0; i < k; i++)
+        members2[i] = this->members[i];
+    members2[k] = members;
+    for (i = k + 1; i < newSize; i++)
+        members2[i] = this->members[i-1];
+    delete [] this->members;
+    this->members = members2;
+    members_arraysize = newSize;
+}
+
+void ClusterAlgTopologyControl::insertMembers(const Ipv4Address& members)
+{
+    insertMembers(members_arraysize, members);
+}
+
+void ClusterAlgTopologyControl::eraseMembers(size_t k)
+{
+    if (k >= members_arraysize) throw omnetpp::cRuntimeError("Array of size  indexed by %lu", (unsigned long)k);
+    handleChange();
+    size_t newSize = members_arraysize - 1;
+    Ipv4Address *members2 = (newSize == 0) ? nullptr : new Ipv4Address[newSize];
+    size_t i;
+    for (i = 0; i < k; i++)
+        members2[i] = this->members[i];
+    for (i = k; i < newSize; i++)
+        members2[i] = this->members[i+1];
+    delete [] this->members;
+    this->members = members2;
+    members_arraysize = newSize;
 }
 
 class ClusterAlgTopologyControlDescriptor : public omnetpp::cClassDescriptor
@@ -1063,6 +1326,8 @@ class ClusterAlgTopologyControlDescriptor : public omnetpp::cClassDescriptor
   private:
     mutable const char **propertynames;
     enum FieldConstants {
+        FIELD_allowedToForward,
+        FIELD_members,
     };
   public:
     ClusterAlgTopologyControlDescriptor();
@@ -1125,7 +1390,7 @@ const char *ClusterAlgTopologyControlDescriptor::getProperty(const char *propert
 int ClusterAlgTopologyControlDescriptor::getFieldCount() const
 {
     omnetpp::cClassDescriptor *basedesc = getBaseClassDescriptor();
-    return basedesc ? 0+basedesc->getFieldCount() : 0;
+    return basedesc ? 2+basedesc->getFieldCount() : 2;
 }
 
 unsigned int ClusterAlgTopologyControlDescriptor::getFieldTypeFlags(int field) const
@@ -1136,7 +1401,11 @@ unsigned int ClusterAlgTopologyControlDescriptor::getFieldTypeFlags(int field) c
             return basedesc->getFieldTypeFlags(field);
         field -= basedesc->getFieldCount();
     }
-    return 0;
+    static unsigned int fieldTypeFlags[] = {
+        FD_ISARRAY,    // FIELD_allowedToForward
+        FD_ISARRAY,    // FIELD_members
+    };
+    return (field >= 0 && field < 2) ? fieldTypeFlags[field] : 0;
 }
 
 const char *ClusterAlgTopologyControlDescriptor::getFieldName(int field) const
@@ -1147,12 +1416,19 @@ const char *ClusterAlgTopologyControlDescriptor::getFieldName(int field) const
             return basedesc->getFieldName(field);
         field -= basedesc->getFieldCount();
     }
-    return nullptr;
+    static const char *fieldNames[] = {
+        "allowedToForward",
+        "members",
+    };
+    return (field >= 0 && field < 2) ? fieldNames[field] : nullptr;
 }
 
 int ClusterAlgTopologyControlDescriptor::findField(const char *fieldName) const
 {
     omnetpp::cClassDescriptor *basedesc = getBaseClassDescriptor();
+    int base = basedesc ? basedesc->getFieldCount() : 0;
+    if (fieldName[0] == 'a' && strcmp(fieldName, "allowedToForward") == 0) return base+0;
+    if (fieldName[0] == 'm' && strcmp(fieldName, "members") == 0) return base+1;
     return basedesc ? basedesc->findField(fieldName) : -1;
 }
 
@@ -1164,7 +1440,11 @@ const char *ClusterAlgTopologyControlDescriptor::getFieldTypeString(int field) c
             return basedesc->getFieldTypeString(field);
         field -= basedesc->getFieldCount();
     }
-    return nullptr;
+    static const char *fieldTypeStrings[] = {
+        "inet::Ipv4Address",    // FIELD_allowedToForward
+        "inet::Ipv4Address",    // FIELD_members
+    };
+    return (field >= 0 && field < 2) ? fieldTypeStrings[field] : nullptr;
 }
 
 const char **ClusterAlgTopologyControlDescriptor::getFieldPropertyNames(int field) const
@@ -1203,6 +1483,8 @@ int ClusterAlgTopologyControlDescriptor::getFieldArraySize(void *object, int fie
     }
     ClusterAlgTopologyControl *pp = (ClusterAlgTopologyControl *)object; (void)pp;
     switch (field) {
+        case FIELD_allowedToForward: return pp->getAllowedToForwardArraySize();
+        case FIELD_members: return pp->getMembersArraySize();
         default: return 0;
     }
 }
@@ -1231,6 +1513,8 @@ std::string ClusterAlgTopologyControlDescriptor::getFieldValueAsString(void *obj
     }
     ClusterAlgTopologyControl *pp = (ClusterAlgTopologyControl *)object; (void)pp;
     switch (field) {
+        case FIELD_allowedToForward: return pp->getAllowedToForward(i).str();
+        case FIELD_members: return pp->getMembers(i).str();
         default: return "";
     }
 }
@@ -1257,7 +1541,9 @@ const char *ClusterAlgTopologyControlDescriptor::getFieldStructName(int field) c
             return basedesc->getFieldStructName(field);
         field -= basedesc->getFieldCount();
     }
-    return nullptr;
+    switch (field) {
+        default: return nullptr;
+    };
 }
 
 void *ClusterAlgTopologyControlDescriptor::getFieldStructValuePointer(void *object, int field, int i) const
@@ -1270,6 +1556,8 @@ void *ClusterAlgTopologyControlDescriptor::getFieldStructValuePointer(void *obje
     }
     ClusterAlgTopologyControl *pp = (ClusterAlgTopologyControl *)object; (void)pp;
     switch (field) {
+        case FIELD_allowedToForward: return toVoidPtr(&pp->getAllowedToForward(i)); break;
+        case FIELD_members: return toVoidPtr(&pp->getMembers(i)); break;
         default: return nullptr;
     }
 }

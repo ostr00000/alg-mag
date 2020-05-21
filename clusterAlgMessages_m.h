@@ -137,6 +137,7 @@ enum NodeState {
  *     NodeState state;
  *     Ipv4Address clusterHeadId;
  *     Ipv4Address neighbors[];
+ *     Ipv4Address neighborsCluster[];
  * }
  * </pre>
  */
@@ -149,6 +150,8 @@ class INET_API ClusterAlgHello : public ::inet::ClusterAlgBase
     Ipv4Address clusterHeadId;
     Ipv4Address *neighbors = nullptr;
     size_t neighbors_arraysize = 0;
+    Ipv4Address *neighborsCluster = nullptr;
+    size_t neighborsCluster_arraysize = 0;
 
   private:
     void copy(const ClusterAlgHello& other);
@@ -184,22 +187,36 @@ class INET_API ClusterAlgHello : public ::inet::ClusterAlgBase
     virtual void insertNeighbors(const Ipv4Address& neighbors);
     virtual void insertNeighbors(size_t k, const Ipv4Address& neighbors);
     virtual void eraseNeighbors(size_t k);
+    virtual void setNeighborsClusterArraySize(size_t size);
+    virtual size_t getNeighborsClusterArraySize() const;
+    virtual const Ipv4Address& getNeighborsCluster(size_t k) const;
+    virtual Ipv4Address& getNeighborsClusterForUpdate(size_t k) { handleChange();return const_cast<Ipv4Address&>(const_cast<ClusterAlgHello*>(this)->getNeighborsCluster(k));}
+    virtual void setNeighborsCluster(size_t k, const Ipv4Address& neighborsCluster);
+    virtual void insertNeighborsCluster(const Ipv4Address& neighborsCluster);
+    virtual void insertNeighborsCluster(size_t k, const Ipv4Address& neighborsCluster);
+    virtual void eraseNeighborsCluster(size_t k);
 };
 
 inline void doParsimPacking(omnetpp::cCommBuffer *b, const ClusterAlgHello& obj) {obj.parsimPack(b);}
 inline void doParsimUnpacking(omnetpp::cCommBuffer *b, ClusterAlgHello& obj) {obj.parsimUnpack(b);}
 
 /**
- * Class generated from <tt>inet/routing/cluster_alg/clusterAlgMessages.msg:36</tt> by nedtool.
+ * Class generated from <tt>inet/routing/cluster_alg/clusterAlgMessages.msg:37</tt> by nedtool.
  * <pre>
  * class ClusterAlgTopologyControl extends ClusterAlgBase
  * {
+ *     Ipv4Address allowedToForward[];
+ *     Ipv4Address members[];
  * }
  * </pre>
  */
 class INET_API ClusterAlgTopologyControl : public ::inet::ClusterAlgBase
 {
   protected:
+    Ipv4Address *allowedToForward = nullptr;
+    size_t allowedToForward_arraysize = 0;
+    Ipv4Address *members = nullptr;
+    size_t members_arraysize = 0;
 
   private:
     void copy(const ClusterAlgTopologyControl& other);
@@ -218,6 +235,22 @@ class INET_API ClusterAlgTopologyControl : public ::inet::ClusterAlgBase
     virtual void parsimUnpack(omnetpp::cCommBuffer *b) override;
 
     // field getter/setter methods
+    virtual void setAllowedToForwardArraySize(size_t size);
+    virtual size_t getAllowedToForwardArraySize() const;
+    virtual const Ipv4Address& getAllowedToForward(size_t k) const;
+    virtual Ipv4Address& getAllowedToForwardForUpdate(size_t k) { handleChange();return const_cast<Ipv4Address&>(const_cast<ClusterAlgTopologyControl*>(this)->getAllowedToForward(k));}
+    virtual void setAllowedToForward(size_t k, const Ipv4Address& allowedToForward);
+    virtual void insertAllowedToForward(const Ipv4Address& allowedToForward);
+    virtual void insertAllowedToForward(size_t k, const Ipv4Address& allowedToForward);
+    virtual void eraseAllowedToForward(size_t k);
+    virtual void setMembersArraySize(size_t size);
+    virtual size_t getMembersArraySize() const;
+    virtual const Ipv4Address& getMembers(size_t k) const;
+    virtual Ipv4Address& getMembersForUpdate(size_t k) { handleChange();return const_cast<Ipv4Address&>(const_cast<ClusterAlgTopologyControl*>(this)->getMembers(k));}
+    virtual void setMembers(size_t k, const Ipv4Address& members);
+    virtual void insertMembers(const Ipv4Address& members);
+    virtual void insertMembers(size_t k, const Ipv4Address& members);
+    virtual void eraseMembers(size_t k);
 };
 
 inline void doParsimPacking(omnetpp::cCommBuffer *b, const ClusterAlgTopologyControl& obj) {obj.parsimPack(b);}
