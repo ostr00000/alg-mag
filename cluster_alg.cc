@@ -3,6 +3,7 @@
 #include "inet/common/ProtocolTag_m.h"
 #include "inet/linklayer/common/InterfaceTag_m.h"
 #include "inet/networklayer/common/L3AddressTag_m.h"
+#include "inet/networklayer/common/L3Tools.h"
 #include "inet/routing/cluster_alg/cluster_alg.h"
 
 namespace inet {
@@ -37,6 +38,7 @@ void ClusterAlg::initialize(int stage)
         ift = getModuleFromPar<IInterfaceTable>(par("interfaceTableModule"), this);
         rt = getModuleFromPar<IIpv4RoutingTable>(par("routingTableModule"), this);
         clusterGraph = new cTopology("clusterGraph");
+        networkProtocol = getModuleFromPar<INetfilter>(par("networkProtocolModule"), this);
 
         routeLifetime = par("routeLifetime").doubleValue();
         helloInterval = par("helloInterval");
@@ -51,6 +53,7 @@ void ClusterAlg::initialize(int stage)
         WATCH(myState);
         WATCH(clusterId);
         WATCH(myIp);
+        WATCH(rt);
 
         helloSignal = registerSignal("helloSignal");
         topologyControlSignal = registerSignal("topologyControlSignal");
@@ -62,6 +65,7 @@ void ClusterAlg::initialize(int stage)
 
     }
     else if (stage == INITSTAGE_ROUTING_PROTOCOLS) {
+        networkProtocol->registerHook(0, this);
         registerService(Protocol::manet, nullptr, gate("ipIn"));
         registerProtocol(Protocol::manet, gate("ipOut"), nullptr);
     }
@@ -116,7 +120,7 @@ void ClusterAlg::start()
     auto time = simTime() + par("clusterUndecidedFirstTime").doubleValue() + uniform(0.0, par("maxVariance").doubleValue());
     scheduleAt(time, clusterStateEvent);
 
-    time = simTime() + uniform(0.0, par("messageSendVariance")) + par("messageSendTime");
+    time = simTime() + uniform(0.0, par("messageSendVariance").doubleValue()) + par("messageSendTime");
     scheduleAt(time, communicationMessageEvent);
 
 }
@@ -132,6 +136,7 @@ void ClusterAlg::stop()
     cancelEvent(tcEvent);
     cancelEvent(helloEvent);
     cancelEvent(clusterStateEvent);
+    cancelEvent(communicationMessageEvent);
 }
 
 void ClusterAlg::handleSelfMessage(cMessage *msg)
@@ -161,6 +166,14 @@ void ClusterAlg::handleSelfMessage(cMessage *msg)
 
 void ClusterAlg::handleCommunicationMessageEvent()
 {
+    // if we random to send message
+    if (uniform(0, 1) < par("messageSendChance").doubleValue()) {
+        //TODO random ip -> toNode -> construct shortest path -> send packet
+        par("numHosts");
+    }
+
+    auto time = simTime() + par("messageSendTime") + uniform(0.0, par("messageSendVariance").doubleValue());
+    scheduleAt(time, communicationMessageEvent);
 
 }
 
@@ -697,7 +710,8 @@ void ClusterAlg::receiveTopologyControl(IntrusivePtr<inet::ClusterAlgTopologyCon
 void ClusterAlg::recomputeRoute()
 {
     clusterGraph->clear();
-    std::map<Ipv4Address, ClusterNode*> clusterIdToNode;
+
+    // TODO clean clusterIdToNode !!!!!!!!!
 
     // add cluster heads
     std::map<Ipv4Address, ClusterInfo*>::iterator it = addressToCluster.begin();
@@ -894,6 +908,29 @@ void ClusterAlg::forwardTC(IntrusivePtr<inet::ClusterAlgTopologyControl> &topolo
 
     sendDelayed(packet, par("broadcastDelay").doubleValue(), "ipOut");
     bubble("Forwarding topology control message");
+}
+
+INetfilter::IHook::Result ClusterAlg::datagramPreRoutingHook(Packet *datagram)
+{
+    const auto &networkHeader = getNetworkProtocolHeader(datagram);
+    const L3Address &destAddr = networkHeader->getDestinationAddress();
+
+    if (destAddr.getType() != L3Address::AddressType::IPv4) {
+        throw cRuntimeError("Unsupported address type");
+    }
+    Ipv4Address address = destAddr.toIpv4();
+
+    // TODO
+    //if (address exists in routing table):
+    //      return
+    // elif (it is know address (addressToCluster)):
+    //      route = from clusterGraph->calculateUnweightedSingleShortestPathsTo(target)
+    //      add route to routing table
+    // else:
+    //      routing unknown
+    //      return
+
+    return INetfilter::IHook::Result::ACCEPT;
 }
 
 } // namespace inet

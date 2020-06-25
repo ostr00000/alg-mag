@@ -9,6 +9,8 @@ simple ClusterAlg like IManetRouting
         string interfaceTableModule;   // The path to the InterfaceTable module
         string routingTableModule;
         bool manetPurgeRoutingTables = default(true); // 
+        string networkProtocolModule = default("^.ipv4.ip");
+        
                 
         double maxVariance = default(2); // This is the maximum of a random value to determine when the first hello message will be sent out
         volatile double broadcastDelay @unit(s) = default(uniform(0s,0.01s));
@@ -33,15 +35,16 @@ simple ClusterAlg like IManetRouting
         @statistic[stateChangedNum](title="Number of changed state"; source="stateChangedSignal"; record=count,vector);
         @statistic[clusterDestroyedNum](title="Number of destroyed cluster"; source="clusterDestroyedSignal"; record=count,vector);
 
-
+		//deprecated moved to app layer 
 		double messageSendTime @unit(s) = default(10s);
-		double messageSendVariance @unit(s) = default(1s);
+		double messageSendVariance = default(1);
 		double messageSendChance = default(1/25);
 
-		@signal[messageSendSignal](type="long");
-		@signal[messageTransferedSignal](type="long");
-		@signal[messageReceivedSignal](type="long");
 		
+		@signal[messageSendSignal](type="long");
+		@signal[messageTransferedSignal](type="long");//?
+		@signal[messageReceivedSignal](type="long");
+				
 		@staictic[messageSendNum](title="Number of send messages"; source="messageSendSignal"; record=count,vector);
 		@staictic[messageTransferedNum](title="Number of transfered messages"; source="messageTransferedSignal"; record=count,vector);
 		@staictic[messageReceivedNum](title="Number of received messages"; source="messageReceivedSignal"; record=count,vector);

@@ -11,6 +11,7 @@
 #include "inet/common/packet/Packet.h"
 #include "inet/networklayer/contract/IInterfaceTable.h"
 #include "inet/networklayer/contract/ipv4/Ipv4Address.h"
+#include "inet/networklayer/contract/INetfilter.h"
 #include "inet/networklayer/ipv4/IIpv4RoutingTable.h"
 #include "inet/networklayer/ipv4/Ipv4Header_m.h"
 #include "inet/networklayer/ipv4/Ipv4InterfaceData.h"
@@ -85,7 +86,7 @@ class ClusterNode : public cTopology::Node
 {
 public:
     ClusterInfo *clusterInfo;
-    ClusterAlgIpv4Route* clusterRoute;
+    ClusterAlgIpv4Route *clusterRoute;
 
     ClusterNode(ClusterInfo *ci) :
             cTopology::Node(), clusterInfo(ci), clusterRoute(nullptr)
@@ -99,7 +100,7 @@ public:
 
 };
 
-class INET_API ClusterAlg : public RoutingProtocolBase
+class INET_API ClusterAlg : public RoutingProtocolBase, public NetfilterBase::HookBase
 {
 private:
     simsignal_t helloSignal;
@@ -131,6 +132,8 @@ public:
     std::map<Ipv4Address, int> counterOfSeenNeighborsLeaders;
 
     std::map<Ipv4Address, ClusterInfo*> addressToCluster;
+    std::map<Ipv4Address, ClusterNode*> clusterIdToNode;
+
 
 protected:
     simtime_t helloInterval;
@@ -138,6 +141,7 @@ protected:
     IInterfaceTable *ift = nullptr;
     IIpv4RoutingTable *rt = nullptr;
     cTopology *clusterGraph = nullptr;
+    INetfilter *networkProtocol = nullptr;
 
 public:
     ClusterAlg();
@@ -188,6 +192,27 @@ protected:
     }
     void start();
     void stop();
+
+    /* Netfilter hooks */
+    virtual Result datagramPreRoutingHook(Packet *datagram) override;
+    virtual Result datagramForwardHook(Packet *datagram) override
+    {
+        return ACCEPT;
+    }
+    virtual Result datagramPostRoutingHook(Packet *datagram) override
+    {
+        return ACCEPT;
+    }
+    virtual Result datagramLocalInHook(Packet *datagram) override
+    {
+        return ACCEPT;
+    }
+    virtual Result datagramLocalOutHook(Packet *datagram) override
+    {
+        return ACCEPT;
+    }
+    void delayDatagram(Packet *datagram);
+
 };
 
 } // namespace inet
