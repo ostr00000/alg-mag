@@ -78,6 +78,25 @@ public:
     std::vector<Ipv4Address> members;
     simtime_t expiryTime;
     unsigned int seq;
+    std::vector<Ipv4Address> neighborClusters;
+};
+
+class ClusterNode : public cTopology::Node
+{
+public:
+    ClusterInfo *clusterInfo;
+    ClusterAlgIpv4Route* clusterRoute;
+
+    ClusterNode(ClusterInfo *ci) :
+            cTopology::Node(), clusterInfo(ci), clusterRoute(nullptr)
+    {
+    }
+
+    ClusterNode(ClusterAlgIpv4Route *cr) :
+            cTopology::Node(), clusterInfo(nullptr), clusterRoute(cr)
+    {
+    }
+
 };
 
 class INET_API ClusterAlg : public RoutingProtocolBase
@@ -87,11 +106,15 @@ private:
     simsignal_t topologyControlSignal;
     simsignal_t stateChangedSignal;
     simsignal_t clusterDestroyedSignal;
+    simsignal_t messageSendSignal;
+    simsignal_t messageTransferedSignal;
+    simsignal_t messageReceivedSignal;
 
     cMessage *helloEvent = nullptr;
     cMessage *tcEvent = nullptr;
     cMessage *clusterStateEvent = nullptr;
     cMessage *topolgyControlEvent = nullptr;
+    cMessage *communicationMessageEvent = nullptr;
 
     cPar *broadcastDelay = nullptr;
     InterfaceEntry *interface80211ptr = nullptr;
@@ -108,13 +131,13 @@ public:
     std::map<Ipv4Address, int> counterOfSeenNeighborsLeaders;
 
     std::map<Ipv4Address, ClusterInfo*> addressToCluster;
-    std::vector<ClusterInfo*> clusterInfoVec;
 
 protected:
     simtime_t helloInterval;
     simtime_t tcInterval;
     IInterfaceTable *ift = nullptr;
     IIpv4RoutingTable *rt = nullptr;
+    cTopology *clusterGraph = nullptr;
 
 public:
     ClusterAlg();
@@ -129,13 +152,17 @@ protected:
 
     void handleHelloEvent();
     void handleTopolgyEvent();
+    void handleCommunicationMessageEvent();
 
     void forwardTC(IntrusivePtr<inet::ClusterAlgTopologyControl> &topologyControl, bool resetForwardNodes);
     void setAllowedToForwardNodes(IntrusivePtr<inet::ClusterAlgTopologyControl> &tc);
+    void setNeighborsCluster(IntrusivePtr<inet::ClusterAlgTopologyControl> &tc);
     bool updateTopologyControl(IntrusivePtr<inet::ClusterAlgTopologyControl> &topologyControl);
     void scheduleTopologyControl(simtime_t scheduleTime);
     void handleClusterStateEvent();
     void refreshTextFromState();
+
+    void recomputeRoute();
 
     virtual int numInitStages() const override
     {

@@ -14,8 +14,8 @@ simple ClusterAlg like IManetRouting
         volatile double broadcastDelay @unit(s) = default(uniform(0s,0.01s));
 
         double helloInterval @unit(s) = default(5s);  // how often hello messages should be sent out
-        double tcInterval @unit(s) = default(5s);  // how often topology control messages should be sent out
-        double routeLifetime @unit(s) = default(9s);  // the expiry time of the routing entries
+        double tcInterval @unit(s) = default(10s);  // how often topology control messages should be sent out
+        double routeLifetime @unit(s) = default(11s);  // the expiry time of the routing entries
 
         double clusterUndecidedFirstTime @unit(s) = default(6s); // must be greater than helloIntrval
         double clusterUndecided @unit(s) = default(1s);
@@ -34,6 +34,18 @@ simple ClusterAlg like IManetRouting
         @statistic[clusterDestroyedNum](title="Number of destroyed cluster"; source="clusterDestroyedSignal"; record=count,vector);
 
 
+		double messageSendTime @unit(s) = default(10s);
+		double messageSendVariance @unit(s) = default(1s);
+		double messageSendChance = default(1/25);
+
+		@signal[messageSendSignal](type="long");
+		@signal[messageTransferedSignal](type="long");
+		@signal[messageReceivedSignal](type="long");
+		
+		@staictic[messageSendNum](title="Number of send messages"; source="messageSendSignal"; record=count,vector);
+		@staictic[messageTransferedNum](title="Number of transfered messages"; source="messageTransferedSignal"; record=count,vector);
+		@staictic[messageReceivedNum](title="Number of received messages"; source="messageReceivedSignal"; record=count,vector);
+		
     gates:
         input ipIn;
         output ipOut;
