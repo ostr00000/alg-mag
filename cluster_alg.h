@@ -150,8 +150,9 @@ public:
 protected:
     void receiveHello(IntrusivePtr<inet::ClusterAlgHello> &recHello);
     void receiveTopologyControl(IntrusivePtr<inet::ClusterAlgTopologyControl> &topologyControl);
-    ClusterAlgIpv4Route* addNewRoute(Ipv4Address dest, Ipv4Address next, Ipv4Address source, int distance,
-            IntrusivePtr<inet::ClusterAlgHello> &recHello);
+    ClusterAlgIpv4Route* addNewRoute(Ipv4Address dest, Ipv4Address next,
+            Ipv4Address source, int distance,IntrusivePtr<inet::ClusterAlgHello> &recHello);
+    ClusterAlgIpv4Route* addNewRoute(Ipv4Address dest, Ipv4Address clusterId, int distance);
     inline void removeOldRoute(ClusterAlgIpv4Route *route);
 
     void handleHelloEvent();

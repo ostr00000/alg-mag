@@ -166,14 +166,15 @@ void ClusterAlg::handleSelfMessage(cMessage *msg)
 
 void ClusterAlg::handleCommunicationMessageEvent()
 {
-    // if we random to send message
-    if (uniform(0, 1) < par("messageSendChance").doubleValue()) {
-        //TODO random ip -> toNode -> construct shortest path -> send packet
-        par("numHosts");
-    }
-
-    auto time = simTime() + par("messageSendTime") + uniform(0.0, par("messageSendVariance").doubleValue());
-    scheduleAt(time, communicationMessageEvent);
+// TODO delete
+//    // if we random to send message
+//    if (uniform(0, 1) < par("messageSendChance").doubleValue()) {
+//        //TODO random ip -> toNode -> construct shortest path -> send packet
+//        par("numHosts");
+//    }
+//
+//    auto time = simTime() + par("messageSendTime") + uniform(0.0, par("messageSendVariance").doubleValue());
+//    scheduleAt(time, communicationMessageEvent);
 
 }
 
@@ -260,8 +261,8 @@ void ClusterAlg::handleHelloEvent()
 
     //broadcast to other nodes the hello message
     send(packet, "ipOut");
-    packet = nullptr;
-    hello = nullptr;
+//    packet = nullptr;
+//    hello = nullptr;
 
     //schedule new broadcast hello message helloEvent
     scheduleAt(simTime() + helloInterval + broadcastDelay->doubleValue(), helloEvent);
@@ -294,6 +295,9 @@ void ClusterAlg::handleTopolgyEvent()
 
     scheduleTopologyControl(simTime() + tcInterval + broadcastDelay->doubleValue());
     bubble("Sending topology control message");
+
+    packet = nullptr;
+    tc = nullptr;
 }
 
 void ClusterAlg::setAllowedToForwardNodes(IntrusivePtr<inet::ClusterAlgTopologyControl> &tc)
@@ -688,7 +692,7 @@ void ClusterAlg::receiveTopologyControl(IntrusivePtr<inet::ClusterAlgTopologyCon
     recomputeRoute();
 
     if (myState == NodeState::LEADER) {
-        forwardTC(topologyControl, true);
+//        forwardTC(topologyControl, true); TEST SEG1
     }
     else if (myState == NodeState::MEMBER) {
         //check if should forward
@@ -702,7 +706,7 @@ void ClusterAlg::receiveTopologyControl(IntrusivePtr<inet::ClusterAlgTopologyCon
         }
 
         if (shouldForward) {
-            forwardTC(topologyControl, false);
+//            forwardTC(topologyControl, false); TEST SEG1
         }
     }
 }
@@ -880,7 +884,7 @@ void ClusterAlg::forwardTC(IntrusivePtr<inet::ClusterAlgTopologyControl> &topolo
     tc->setSrcId(topologyControl->getSrcId());
 
     if (resetForwardNodes) {
-        setAllowedToForwardNodes(topologyControl);
+        setAllowedToForwardNodes(tc);
     }
     else {
         int forwadSize = topologyControl->getAllowedToForwardArraySize();
@@ -912,6 +916,8 @@ void ClusterAlg::forwardTC(IntrusivePtr<inet::ClusterAlgTopologyControl> &topolo
 
 INetfilter::IHook::Result ClusterAlg::datagramPreRoutingHook(Packet *datagram)
 {
+    return INetfilter::IHook::Result::ACCEPT; //TODO
+
     const auto &networkHeader = getNetworkProtocolHeader(datagram);
     const L3Address &destAddr = networkHeader->getDestinationAddress();
 
@@ -919,6 +925,34 @@ INetfilter::IHook::Result ClusterAlg::datagramPreRoutingHook(Packet *datagram)
         throw cRuntimeError("Unsupported address type");
     }
     Ipv4Address address = destAddr.toIpv4();
+
+    // route already exists
+    rt->purge();
+    Ipv4Route *bestMatch = rt->findBestMatchingRoute(address);
+    if (bestMatch != nullptr) {
+        return INetfilter::IHook::Result::ACCEPT;
+    }
+
+    // route does not exist but the cluster is known
+    auto addressToClusterIt = addressToCluster.find(address);
+    if (addressToClusterIt != addressToCluster.end()) {
+        ClusterInfo *clusterInfo = addressToClusterIt->second;
+        Ipv4Address clusterLeaderIp = clusterInfo->clusterId;
+
+        auto nodeIt = clusterIdToNode.find(clusterLeaderIp);
+        if (nodeIt != clusterIdToNode.end()) {
+            auto node = nodeIt->second;
+            clusterGraph->calculateWeightedSingleShortestPathsTo(node);
+
+            cTopology::LinkOut *outPath = node->getPath(0);
+            auto ln = outPath->getLocalNode();
+            auto rn = outPath->getRemoteNode();
+            double distance = node->getDistanceToTarget();
+            int iDistance = (int) distance;
+//            addNewRoute(address, clusterLeaderIp);
+
+        }
+    }
 
     // TODO
     //if (address exists in routing table):
@@ -931,6 +965,33 @@ INetfilter::IHook::Result ClusterAlg::datagramPreRoutingHook(Packet *datagram)
     //      return
 
     return INetfilter::IHook::Result::ACCEPT;
+}
+
+ClusterAlgIpv4Route* ClusterAlg::addNewRoute(Ipv4Address dest, Ipv4Address clusterId, int distance)
+{
+    Ipv4Address source = this->myIp;
+
+    ClusterAlgIpv4Route *e = new ClusterAlgIpv4Route();
+    e->setDestination(dest);
+    e->setGateway(clusterId);
+    e->setSourceFromId(source);
+    e->setMetric(distance);
+    e->distance = distance;
+
+    e->clusterId = clusterId;
+    e->sequencenumber = this->sequencenumber;
+    this->sequencenumber += 1;
+
+    e->undecidedNeighborsNum = 0;
+    e->state=NodeState::LEADER;
+    e->neighborsNum = 0;
+
+    e->setExpiryTime(simTime() + routeLifetime);
+    e->setNetmask(Ipv4Address::ALLONES_ADDRESS);
+    e->setInterface(interface80211ptr);
+    e->setSourceType(IRoute::MANET);
+    rt->addRoute(e);
+    return e;
 }
 
 } // namespace inet
