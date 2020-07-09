@@ -6,10 +6,12 @@ simple ClusterAlg like IManetRouting
 {
     parameters:
         @display("i=block/routing");
-        string interfaceTableModule;   // The path to the InterfaceTable module
-        string routingTableModule;
-        bool manetPurgeRoutingTables = default(true); // 
-                
+        string interfaceTableModule = default("^.interfaceTable"); 
+        string routingTableModule = default("^.ipv4.routingTable");
+        bool manetPurgeRoutingTables = default(true);
+        string networkProtocolModule = default("^.ipv4.ip");
+
+
         double maxVariance = default(2); // This is the maximum of a random value to determine when the first hello message will be sent out
         volatile double broadcastDelay @unit(s) = default(uniform(0s,0.01s));
 
@@ -32,11 +34,6 @@ simple ClusterAlg like IManetRouting
         @statistic[topologyControlNum](title="Number of Topolgy Control messages"; source="topologyControlSignal"; record=count,vector);
         @statistic[stateChangedNum](title="Number of changed state"; source="stateChangedSignal"; record=count,vector);
         @statistic[clusterDestroyedNum](title="Number of destroyed cluster"; source="clusterDestroyedSignal"; record=count,vector);
-
-
-		double messageSendTime @unit(s) = default(10s);
-		double messageSendVariance @unit(s) = default(1s);
-		double messageSendChance = default(1/25);
 
 		@signal[messageSendSignal](type="long");
 		@signal[messageTransferedSignal](type="long");

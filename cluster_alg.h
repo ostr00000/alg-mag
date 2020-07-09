@@ -11,6 +11,7 @@
 #include "inet/common/packet/Packet.h"
 #include "inet/networklayer/contract/IInterfaceTable.h"
 #include "inet/networklayer/contract/ipv4/Ipv4Address.h"
+#include "inet/networklayer/contract/INetfilter.h"
 #include "inet/networklayer/ipv4/IIpv4RoutingTable.h"
 #include "inet/networklayer/ipv4/Ipv4Header_m.h"
 #include "inet/networklayer/ipv4/Ipv4InterfaceData.h"
@@ -85,7 +86,7 @@ class ClusterNode : public cTopology::Node
 {
 public:
     ClusterInfo *clusterInfo;
-    ClusterAlgIpv4Route* clusterRoute;
+    ClusterAlgIpv4Route *clusterRoute;
 
     ClusterNode(ClusterInfo *ci) :
             cTopology::Node(), clusterInfo(ci), clusterRoute(nullptr)
@@ -99,7 +100,7 @@ public:
 
 };
 
-class INET_API ClusterAlg : public RoutingProtocolBase
+class INET_API ClusterAlg : public RoutingProtocolBase, public NetfilterBase::HookBase
 {
 private:
     simsignal_t helloSignal;
@@ -114,7 +115,6 @@ private:
     cMessage *tcEvent = nullptr;
     cMessage *clusterStateEvent = nullptr;
     cMessage *topolgyControlEvent = nullptr;
-    cMessage *communicationMessageEvent = nullptr;
 
     cPar *broadcastDelay = nullptr;
     InterfaceEntry *interface80211ptr = nullptr;
@@ -131,6 +131,7 @@ public:
     std::map<Ipv4Address, int> counterOfSeenNeighborsLeaders;
 
     std::map<Ipv4Address, ClusterInfo*> addressToCluster;
+    std::map<Ipv4Address, ClusterNode*> clusterIdToNode;
 
 protected:
     simtime_t helloInterval;
@@ -138,6 +139,7 @@ protected:
     IInterfaceTable *ift = nullptr;
     IIpv4RoutingTable *rt = nullptr;
     cTopology *clusterGraph = nullptr;
+    INetfilter *networkProtocol = nullptr;
 
 public:
     ClusterAlg();
@@ -148,11 +150,11 @@ protected:
     void receiveTopologyControl(IntrusivePtr<inet::ClusterAlgTopologyControl> &topologyControl);
     ClusterAlgIpv4Route* addNewRoute(Ipv4Address dest, Ipv4Address next, Ipv4Address source, int distance,
             IntrusivePtr<inet::ClusterAlgHello> &recHello);
+    ClusterAlgIpv4Route* addNewRoute(Ipv4Address dest, Ipv4Address clusterId, int distance);
     inline void removeOldRoute(ClusterAlgIpv4Route *route);
 
     void handleHelloEvent();
     void handleTopolgyEvent();
-    void handleCommunicationMessageEvent();
 
     void forwardTC(IntrusivePtr<inet::ClusterAlgTopologyControl> &topologyControl, bool resetForwardNodes);
     void setAllowedToForwardNodes(IntrusivePtr<inet::ClusterAlgTopologyControl> &tc);
@@ -188,6 +190,31 @@ protected:
     }
     void start();
     void stop();
+
+    /* Netfilter hooks */
+    Result ensureRouteForDatagram(Packet *datagram);
+
+    virtual Result datagramPreRoutingHook(Packet *datagram) override
+    {
+        return ensureRouteForDatagram(datagram);
+    }
+    virtual Result datagramForwardHook(Packet *datagram) override
+    {
+        return ACCEPT;
+    }
+    virtual Result datagramPostRoutingHook(Packet *datagram) override
+    {
+        return ACCEPT;
+    }
+    virtual Result datagramLocalInHook(Packet *datagram) override
+    {
+        return ACCEPT;
+    }
+    virtual Result datagramLocalOutHook(Packet *datagram) override
+    {
+        return ensureRouteForDatagram(datagram);
+    }
+
 };
 
 } // namespace inet
