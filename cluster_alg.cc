@@ -51,6 +51,7 @@ void ClusterAlg::initialize(int stage)
         WATCH(myState);
         WATCH(clusterId);
         WATCH(myIp);
+        WATCH(addressToClusterSize);
 
         helloSignal = registerSignal("helloSignal");
         topologyControlSignal = registerSignal("topologyControlSignal");
@@ -250,14 +251,13 @@ void ClusterAlg::handleTopolgyEvent()
     int index;
     auto tc = makeShared<ClusterAlgTopologyControl>();
 
-    //set base informations
+    //set base informationshelloInterval
     tc->setChunkLength(b(128)); ///size of message in bits
     topologySeq += 2;
     tc->setSequencenumber(sequencenumber);
     tc->setHopdistance(1);
     tc->setMessageType(TOPOLOGY_CONTROL);
     tc->setSrcId(interface80211ptr->getIpv4Address());
-
 
     // find neighbor clusters and my members
     std::set<Ipv4Address> neighborClusters;
@@ -271,7 +271,8 @@ void ClusterAlg::handleTopolgyEvent()
                 auto id = route->getIdFromSource();
                 members.push_back(id);
                 neighborClusters.insert(route->neighborsClusterIds.begin(), route->neighborsClusterIds.end());
-            }else{
+            }
+            else {
                 neighborClusters.insert(route->clusterId);
             }
         }
@@ -280,7 +281,7 @@ void ClusterAlg::handleTopolgyEvent()
     // set neighbor clusters
     tc->setNeighborsClusterArraySize(neighborClusters.size());
     index = 0;
-    for (auto const &neighborCluster: neighborClusters) {
+    for (auto const &neighborCluster : neighborClusters) {
         tc->setNeighborsCluster(index, neighborCluster);
         index += 1;
     }
@@ -349,28 +350,12 @@ void ClusterAlg::setAllowedToForwardNodes(IntrusivePtr<inet::ClusterAlgTopologyC
     }
 
     std::vector<Ipv4Address> allowedToForward;
-    ClusterAlgIpv4Route *bestCandidate;
-    bool first;
     for (auto remainingCluster : neighborClusters) {
 
         // find node with access to remainingCluster
-        first = false;
-        for (auto itr = clusterToNode.find(remainingCluster); itr != clusterToNode.end(); itr++) {
-            Ipv4Address mapCluster = itr->first;
-            if (mapCluster != remainingCluster) {
-                continue;
-            }
-
-            ClusterAlgIpv4Route *candidate = itr->second;
-            if (!first) {
-                bestCandidate = candidate;
-                first = true;
-            }
-            else {
-                if (candidate->getIdFromSource() < bestCandidate->getIdFromSource()) {
-                    bestCandidate = candidate;
-                }
-            }
+        ClusterAlgIpv4Route *bestCandidate = findBestCandidateToForward(remainingCluster, clusterToNode);
+        if (bestCandidate == nullptr) {
+            continue;
         }
 
         // check if bestCandidate is direct neighbor with leader of remainingCluster
@@ -403,6 +388,28 @@ void ClusterAlg::setAllowedToForwardNodes(IntrusivePtr<inet::ClusterAlgTopologyC
         index += 1;
     }
 
+}
+
+ClusterAlgIpv4Route* ClusterAlg::findBestCandidateToForward(Ipv4Address clusterId, std::multimap<Ipv4Address, ClusterAlgIpv4Route*> clusterToNode)
+{
+    ClusterAlgIpv4Route *bestCandidate = nullptr;
+    for (auto itr = clusterToNode.find(clusterId); itr != clusterToNode.end(); itr++) {
+        Ipv4Address mapCluster = itr->first;
+        if (mapCluster != clusterId) {
+            continue;
+        }
+
+        ClusterAlgIpv4Route *candidate = itr->second;
+        if (bestCandidate == nullptr) {
+            bestCandidate = candidate;
+        }
+        else {
+            if (candidate->getIdFromSource() < bestCandidate->getIdFromSource()) {
+                bestCandidate = candidate;
+            }
+        }
+    }
+    return bestCandidate;
 }
 
 void ClusterAlg::setNeighborsCluster(IntrusivePtr<inet::ClusterAlgTopologyControl> &tc)
@@ -726,57 +733,107 @@ void ClusterAlg::receiveTopologyControl(IntrusivePtr<inet::ClusterAlgTopologyCon
 void ClusterAlg::recomputeRoute()
 {
     clusterGraph->clear();
-    clusterIdToNode.clear(); // maybe sth different method?
+//    for (auto clusterNode : clusterIdToNode) { // TODO SEGV
+//        delete clusterNode.second;
+//    }
+    clusterIdToNode.clear();
 
     // add cluster heads
-    std::map<Ipv4Address, ClusterInfo*>::iterator it = addressToCluster.begin();
-    while (it != addressToCluster.end()) {
+    for (std::map<Ipv4Address, ClusterInfo*>::iterator it = addressToCluster.begin(); it != addressToCluster.end();) {
         Ipv4Address addr = it->first;
         ClusterInfo *cluster = it->second;
 
         if (addr == cluster->clusterId) {
+            EV << addr.str();
             auto node = new ClusterNode(cluster);
             clusterGraph->addNode(node);
             clusterIdToNode.insert(std::pair<Ipv4Address, ClusterNode*>(addr, node));
         }
         ++it;
-    }
+    }    //maybe add also info about neighbor clusters?
+
+    // add self
+    // delete myNode;
+    myNode = new ClusterNode(this->myIp);
+    clusterGraph->addNode(myNode);
+    clusterIdToNode.insert(std::pair<Ipv4Address, ClusterNode*>(this->myIp, myNode));
 
     //add connection between cluster heads
     for (int i = 0, j = clusterGraph->getNumNodes(); i < j; i++) {
         auto curNode = dynamic_cast<ClusterNode*>(clusterGraph->getNode(i));
+
+        // it is this node
+        if (curNode->clusterInfo == nullptr) {
+            continue;
+        }
 
         for (Ipv4Address otherClusterId : curNode->clusterInfo->neighborClusters) {
             auto otherNode = clusterIdToNode.find(otherClusterId);
             if (otherNode == clusterIdToNode.end()) {
                 continue;
             }
+            if (otherNode->second == curNode) {
+                continue;
+            }
 
-            int weight = 4; // must be greater than direct and 2-hop neighbors
+            int weight = 8; // must be greater than direct and 2-hop neighbors
             auto link = new cTopology::Link(weight);
             // graph is directed but we get reverse link when we process other node
             clusterGraph->addLink(link, curNode, otherNode->second);
         }
     }
 
-    // add self
-    auto myNode = new ClusterNode((ClusterAlgIpv4Route*) nullptr);
-    clusterGraph->addNode(myNode);
+    //search for my members and neighbor clusters
+    std::set<Ipv4Address> neighborClusters;
+    std::vector<Ipv4Address> oneHopNeighbors;
+    std::map<Ipv4Address, std::vector<Ipv4Address>*> twoHopNeighbors;
+    rt->purge();
 
-    // add direct neighbors
-    for (int i = 0, j = rt->getNumRoutes(); i < j; i++) {
-        Ipv4Route *route = rt->getRoute(i);
-        ClusterAlgIpv4Route *clusterRoute = dynamic_cast<ClusterAlgIpv4Route*>(route);
-        if (clusterRoute == nullptr) {
-            continue;
+    for (int k = 0, total = rt->getNumRoutes(); k < total; k++) {
+        ClusterAlgIpv4Route *route = dynamic_cast<ClusterAlgIpv4Route*>(rt->getRoute(k));
+        if (route != nullptr && route->getMetric() == 1) {
+            if (route->clusterId == myIp) {
+                neighborClusters.insert(route->neighborsClusterIds.begin(), route->neighborsClusterIds.end());
+            }
+            else {
+                neighborClusters.insert(route->clusterId);
+            }
+
+            auto id = route->getIdFromSource();
+            oneHopNeighbors.push_back(id);
+            twoHopNeighbors.insert(std::pair<Ipv4Address, std::vector<Ipv4Address>*>(id, &route->neighborsIds));
+
         }
+    }
 
+    // add neighbor clusters leaders
+    for (Ipv4Address neighborCluster : neighborClusters) {
         ClusterNode *node;
-        auto nodeExist = clusterIdToNode.find(clusterRoute->clusterId);
+        auto nodeExist = clusterIdToNode.find(neighborCluster);
         if (nodeExist == clusterIdToNode.end()) {
             // if node not exist yet then create and add the new node
-            node = new ClusterNode(clusterRoute);
+            node = new ClusterNode(neighborCluster); // TODO change constructor type?
             clusterGraph->addNode(node);
+            clusterIdToNode.insert(std::pair<Ipv4Address, ClusterNode*>(neighborCluster, node));
+        }
+        else {
+            node = nodeExist->second;
+        }
+
+        int weight = 4;
+        auto link = new cTopology::Link(weight);
+        clusterGraph->addLink(link, myNode, node);
+    }
+
+    // add direct neighbors
+    for (Ipv4Address oneHopNeighbor : oneHopNeighbors) {
+        ClusterNode *node;
+        auto nodeExist = clusterIdToNode.find(oneHopNeighbor);
+        if (nodeExist == clusterIdToNode.end()) {
+            // if node not exist yet then create and add the new node
+            node = new ClusterNode(oneHopNeighbor);
+            clusterGraph->addNode(node);
+            clusterIdToNode.insert(std::pair<Ipv4Address, ClusterNode*>(oneHopNeighbor, node));
         }
         else {
             node = nodeExist->second;
@@ -787,6 +844,45 @@ void ClusterAlg::recomputeRoute()
         clusterGraph->addLink(link, myNode, node);
     }
 
+    // add 2hop neighbors
+    std::map<Ipv4Address, ClusterNode*> twoHopNodes;
+    for (auto it = twoHopNeighbors.begin(); it != twoHopNeighbors.end(); it++) {
+        Ipv4Address oneHopNeighbor = it->first;
+        std::vector<Ipv4Address> *twoHopneighborsVec = it->second;
+
+        auto nodeExist = clusterIdToNode.find(oneHopNeighbor);
+        if (nodeExist == clusterIdToNode.end()) {
+            continue; // node should be already added, so this should never be happen
+        }
+        ClusterNode *oneHopNode = nodeExist->second;
+        ClusterNode *twoHopNode;
+
+        for (Ipv4Address twoHopNeighbor : (*twoHopneighborsVec)) {
+            auto twoHopNodeExist = clusterIdToNode.find(twoHopNeighbor);
+            if (twoHopNodeExist == clusterIdToNode.end()) {
+                // if node not exist yet then create and add the new node
+                twoHopNode = new ClusterNode(twoHopNeighbor);
+                clusterGraph->addNode(twoHopNode);
+                twoHopNodes.insert(std::pair<Ipv4Address, ClusterNode*>(twoHopNeighbor, twoHopNode));
+            }
+            else {
+                auto twoHopNodeExist2 = twoHopNodes.find(twoHopNeighbor);
+                if (twoHopNodeExist2 != twoHopNodes.end()) {
+                    // if node exist here it means that there are multiple path
+                    twoHopNode = twoHopNodeExist2->second;
+                }
+                else {
+                    continue; // skip already added nodes
+                }
+            }
+
+            int weight = 2;
+            auto link = new cTopology::Link(weight);
+            clusterGraph->addLink(link, oneHopNode, twoHopNode);
+        }
+    }
+
+    addressToClusterSize = addressToCluster.size();
 }
 
 bool ClusterAlg::updateTopologyControl(IntrusivePtr<inet::ClusterAlgTopologyControl> &topologyControl)
@@ -823,7 +919,7 @@ bool ClusterAlg::updateTopologyControl(IntrusivePtr<inet::ClusterAlgTopologyCont
             }
 
             // delete cluster info
-            delete clusterInfo;
+            delete clusterInfo; // TODO should be deleted but SEGV
             it = addressToCluster.erase(it);
 
         }
@@ -911,6 +1007,12 @@ void ClusterAlg::forwardTC(IntrusivePtr<inet::ClusterAlgTopologyControl> &topolo
         tc->setNeighborsCluster(i, topologyControl->getNeighborsCluster(i));
     }
 
+    int membersSize = topologyControl->getMembersArraySize();
+    tc->setMembersArraySize(membersSize);
+    for (int i = 0; i < membersSize; i++) {
+        tc->setMembers(i, topologyControl->getMembers(i));
+    }
+
     //new control info for ClusterAlgTopologyControl
     auto packetName = resetForwardNodes ? "TopologyControlForwardFromLeader" : "TopologyControlForward";
     auto packet = new Packet(packetName, tc);
@@ -938,14 +1040,24 @@ INetfilter::IHook::Result ClusterAlg::ensureRouteForDatagram(Packet *datagram)
         return INetfilter::IHook::Result::ACCEPT;
     }
 
+    Ipv4Address gateway = calculateRoute(address);
+    auto gatewayStr = gateway.str(true);
+    std::string graphString = ClusterNode::toString(clusterGraph);
+    EV_DEBUG << graphString;
+
+    return INetfilter::IHook::Result::ACCEPT;
+}
+
+Ipv4Address ClusterAlg::calculateRoute(Ipv4Address address)
+{
     // route already exists
-    rt->purge();
     Ipv4Route *bestMatch = rt->findBestMatchingRoute(address);
     if (bestMatch != nullptr) {
-        return INetfilter::IHook::Result::ACCEPT;
+        return bestMatch->getGateway();
     }
 
-    int s = addressToCluster.size();
+    Ipv4Address nextAddress = Ipv4Address::UNSPECIFIED_ADDRESS;
+
     // route does not exist but the cluster is known
     auto addressToClusterIt = addressToCluster.find(address);
     if (addressToClusterIt != addressToCluster.end()) {
@@ -957,26 +1069,114 @@ INetfilter::IHook::Result ClusterAlg::ensureRouteForDatagram(Packet *datagram)
             auto node = nodeIt->second;
             clusterGraph->calculateWeightedSingleShortestPathsTo(node);
 
-            cTopology::LinkOut *outPath = node->getPath(0);
-            auto ln = outPath->getLocalNode();
-            auto rn = outPath->getRemoteNode();
-            double distance = node->getDistanceToTarget();
-            int iDistance = (int) distance;
-//            addNewRoute(address, clusterLeaderIp);  // TODO
+            cTopology::LinkOut *outPath = myNode->getPath(0);
+            if (outPath != nullptr) {
+                ClusterNode *remoteNode = dynamic_cast<ClusterNode*>(outPath->getRemoteNode());
+                if (remoteNode != nullptr) {
+                    int distance = (int) myNode->getDistanceToTarget();
+                    if (remoteNode->clusterInfo != nullptr) { //via neighbor cluster
+                        nextAddress = remoteNode->clusterInfo->clusterId;
+                        addNewRouteToClusterLeader(address, nextAddress, (int) distance);
+                    }
+
+                    else if (remoteNode->clusterRoute != nullptr) { //via neighbor
+                        nextAddress = remoteNode->clusterRoute->getIdFromSource();
+                        Ipv4Address clusterAddress = remoteNode->clusterRoute->clusterId;
+                        addNewRoute(address, nextAddress, clusterAddress, distance, NodeState::MEMBER);
+                    }
+
+                    else if (remoteNode->address != Ipv4Address::UNSPECIFIED_ADDRESS) { //2 hop neighbor or self - probably never accessible
+                        nextAddress = remoteNode->address;
+                        addNewRoute(address, nextAddress, nextAddress, distance, NodeState::MEMBER);
+                    }
+
+                    else {
+                        throw cRuntimeError("Unknown ClusterNode type");
+                    }
+                }
+
+            }
 
         }
     }
 
-    return INetfilter::IHook::Result::ACCEPT;
+    // try 2 hop neighbor
+    if (nextAddress == Ipv4Address::UNSPECIFIED_ADDRESS) {
+        for (int k = 0, total = rt->getNumRoutes(); k < total; k++) {
+            ClusterAlgIpv4Route *route = dynamic_cast<ClusterAlgIpv4Route*>(rt->getRoute(k));
+
+            if (route != nullptr && route->getMetric() == 1) {
+                for (Ipv4Address twoHopNeighbor : route->neighborsIds) {
+                    if (twoHopNeighbor == address) {
+                        nextAddress = route->getIdFromSource();
+                        addNewRoute(address, nextAddress, route->clusterId, 2, NodeState::MEMBER);
+                        break;
+                    }
+                }
+
+                if (nextAddress != Ipv4Address::UNSPECIFIED_ADDRESS) {
+                    break;
+                }
+            }
+        }
+    }
+
+//    if (nextAddress != Ipv4Address::UNSPECIFIED_ADDRESS) {
+//        calculateRoute(nextAddress);
+//    }
+
+    return nextAddress;
+
 }
 
-ClusterAlgIpv4Route* ClusterAlg::addNewRoute(Ipv4Address dest, Ipv4Address clusterId, int distance)
+ClusterAlgIpv4Route* ClusterAlg::addNewRouteToClusterLeader(Ipv4Address dest, Ipv4Address clusterId, int distance)
+{
+    Ipv4Address gateway = Ipv4Address::UNSPECIFIED_ADDRESS;
+    NodeState state = NodeState::LEADER;
+    std::multimap<Ipv4Address, ClusterAlgIpv4Route*> clusterToNode;
+
+    for (int i = 0, j = rt->getNumRoutes(); i < j; i++) {
+        Ipv4Route *route = rt->getRoute(i);
+        ClusterAlgIpv4Route *clusterRoute = dynamic_cast<ClusterAlgIpv4Route*>(route);
+        if (clusterRoute == nullptr) {
+            continue;
+        }
+
+        // if isDirectNeighbor
+        if (clusterRoute->distance == 1) {
+            if (clusterRoute->getIdFromSource() == clusterId) {
+                gateway = clusterId;
+                break;
+            }
+            if (clusterRoute->state == NodeState::MEMBER) {
+                for (auto cluster : clusterRoute->neighborsClusterIds) {
+                    clusterToNode.insert(std::pair<Ipv4Address, ClusterAlgIpv4Route*>(cluster, clusterRoute));
+                }
+            }
+        }
+    }
+
+    if (gateway == Ipv4Address::UNSPECIFIED_ADDRESS) {
+        auto bestCandidateToForward = this->findBestCandidateToForward(clusterId, clusterToNode);
+        if (bestCandidateToForward != nullptr) {
+            gateway = bestCandidateToForward->getIdFromSource();
+            state = NodeState::MEMBER;
+        }
+        else {
+            gateway = clusterId;
+        }
+    }
+
+    return addNewRoute(dest, gateway, clusterId, distance, state);
+}
+
+ClusterAlgIpv4Route* ClusterAlg::addNewRoute(Ipv4Address dest, Ipv4Address gateway, Ipv4Address clusterId, int distance, NodeState state)
 {
     Ipv4Address source = this->myIp;
 
     ClusterAlgIpv4Route *e = new ClusterAlgIpv4Route();
     e->setDestination(dest);
-    e->setGateway(clusterId);
+    e->setGateway(gateway);
     e->setSourceFromId(source);
     e->setMetric(distance);
     e->distance = distance;
@@ -986,7 +1186,7 @@ ClusterAlgIpv4Route* ClusterAlg::addNewRoute(Ipv4Address dest, Ipv4Address clust
     this->sequencenumber += 1;
 
     e->undecidedNeighborsNum = 0;
-    e->state = NodeState::LEADER;
+    e->state = state;
     e->neighborsNum = 0;
 
     e->setExpiryTime(simTime() + routeLifetime);

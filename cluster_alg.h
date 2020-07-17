@@ -18,87 +18,9 @@
 #include "inet/networklayer/ipv4/Ipv4RoutingTable.h"
 #include "inet/routing/base/RoutingProtocolBase.h"
 #include "inet/routing/cluster_alg/clusterAlgMessages_m.h"
-
+#include "inet/routing/cluster_alg/ClusterNode.h"
 namespace inet {
 
-class NodeObject : public cObject
-{
-public:
-    Ipv4Address address;
-};
-
-class INET_API ClusterAlgIpv4Route : public Ipv4Route
-{
-protected:
-    simtime_t expiryTime;  // time the routing entry is valid until
-public:
-    unsigned int sequencenumber; // originated from destination. Ensures loop freeness.
-    NodeState state;
-    int undecidedNeighborsNum = -1;
-    int distance;
-    int neighborsNum;
-    Ipv4Address clusterId;
-    std::vector<Ipv4Address> neighborsClusterIds;
-    std::vector<Ipv4Address> neighborsIds;
-
-public:
-    virtual bool isValid() const override
-    {
-        return expiryTime == 0 || expiryTime > simTime();
-    }
-
-    simtime_t getExpiryTime() const
-    {
-        return expiryTime;
-    }
-    void setExpiryTime(simtime_t time)
-    {
-        expiryTime = time;
-    }
-
-    void setSourceFromId(Ipv4Address id)
-    {
-        NodeObject *nObj = new NodeObject();
-        nObj->address = id;
-        simtime_t expiryTime;  // time the routing entry is valid until
-
-        setSource(nObj);
-    }
-    Ipv4Address getIdFromSource()
-    {
-        NodeObject *src = dynamic_cast<NodeObject*>(getSource());
-        return src->address;
-    }
-
-};
-
-class ClusterInfo : public cObject
-{
-public:
-    Ipv4Address clusterId;
-    std::vector<Ipv4Address> members;
-    simtime_t expiryTime;
-    unsigned int seq;
-    std::vector<Ipv4Address> neighborClusters;
-};
-
-class ClusterNode : public cTopology::Node
-{
-public:
-    ClusterInfo *clusterInfo;
-    ClusterAlgIpv4Route *clusterRoute;
-
-    ClusterNode(ClusterInfo *ci) :
-            cTopology::Node(), clusterInfo(ci), clusterRoute(nullptr)
-    {
-    }
-
-    ClusterNode(ClusterAlgIpv4Route *cr) :
-            cTopology::Node(), clusterInfo(nullptr), clusterRoute(cr)
-    {
-    }
-
-};
 
 class INET_API ClusterAlg : public RoutingProtocolBase, public NetfilterBase::HookBase
 {
@@ -125,6 +47,7 @@ private:
     cModule *host = nullptr;
 
     Ipv4Address myIp;
+    int addressToClusterSize = 0;
 public:
     NodeState myState;
     Ipv4Address clusterId;
@@ -132,6 +55,7 @@ public:
 
     std::map<Ipv4Address, ClusterInfo*> addressToCluster;
     std::map<Ipv4Address, ClusterNode*> clusterIdToNode;
+    ClusterNode *myNode = nullptr;
 
 protected:
     simtime_t helloInterval;
@@ -150,7 +74,10 @@ protected:
     void receiveTopologyControl(IntrusivePtr<inet::ClusterAlgTopologyControl> &topologyControl);
     ClusterAlgIpv4Route* addNewRoute(Ipv4Address dest, Ipv4Address next, Ipv4Address source, int distance,
             IntrusivePtr<inet::ClusterAlgHello> &recHello);
-    ClusterAlgIpv4Route* addNewRoute(Ipv4Address dest, Ipv4Address clusterId, int distance);
+    ClusterAlgIpv4Route* addNewRouteToClusterLeader(Ipv4Address dest, Ipv4Address clusterId, int distance);
+    ClusterAlgIpv4Route* addNewRoute(Ipv4Address dest, Ipv4Address gateway, Ipv4Address clusterId, int distance, NodeState state);
+
+
     inline void removeOldRoute(ClusterAlgIpv4Route *route);
 
     void handleHelloEvent();
@@ -158,12 +85,14 @@ protected:
 
     void forwardTC(IntrusivePtr<inet::ClusterAlgTopologyControl> &topologyControl, bool resetForwardNodes);
     void setAllowedToForwardNodes(IntrusivePtr<inet::ClusterAlgTopologyControl> &tc);
+    ClusterAlgIpv4Route* findBestCandidateToForward(Ipv4Address clusterId, std::multimap<Ipv4Address, ClusterAlgIpv4Route*> clusterToNode);
     void setNeighborsCluster(IntrusivePtr<inet::ClusterAlgTopologyControl> &tc);
     bool updateTopologyControl(IntrusivePtr<inet::ClusterAlgTopologyControl> &topologyControl);
     void scheduleTopologyControl(simtime_t scheduleTime);
     void handleClusterStateEvent();
     void refreshTextFromState();
 
+    Ipv4Address calculateRoute(Ipv4Address address);
     void recomputeRoute();
 
     virtual int numInitStages() const override
