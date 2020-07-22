@@ -33,6 +33,16 @@ public:
     std::vector<Ipv4Address> neighborClusters;
 };
 
+class ClusterLink : public cTopology::Link
+{
+public:
+    std::string relation = "";
+
+    ClusterLink(double weight=1): cTopology::Link(weight){
+    }
+
+};
+
 class ClusterNode : public cTopology::Node
 {
 public:
@@ -56,7 +66,7 @@ public:
     }
 
     static std::string getTextRepresentation(ClusterNode *node);
-    static std::string toString(cTopology* topology);
+    static std::string toString(cTopology *topology);
 
 };
 }

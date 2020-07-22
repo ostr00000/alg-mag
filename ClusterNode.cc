@@ -29,7 +29,7 @@ std::string ClusterNode::getTextRepresentation(ClusterNode *node)
     return "Node" + text;
 }
 
-std::string ClusterNode::toString(cTopology* topology)
+std::string ClusterNode::toString(cTopology *topology)
 {
     std::stringstream stream;
     stream << "digraph graphname {\n";
@@ -46,9 +46,12 @@ std::string ClusterNode::toString(cTopology* topology)
 
         for (int k = 0, l = node->getNumOutLinks(); k < l; k++) {
             stream << fromNodeText << " -> ";
-            cTopology::LinkOut* link = node->getLinkOut(k);
+            cTopology::LinkOut *link = node->getLinkOut(k);
+            ClusterLink* cl = (ClusterLink*)(link);
+            std::string label = " [ label = \"" + cl->relation + "\" ]";
             ClusterNode *otherNode = dynamic_cast<ClusterNode*>(link->getRemoteNode());
-            stream << getTextRepresentation(otherNode) << "\n";
+            stream << getTextRepresentation(otherNode) << label << "\n";
+
         }
     }
 
