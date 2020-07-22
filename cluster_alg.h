@@ -54,7 +54,7 @@ public:
     std::map<Ipv4Address, int> counterOfSeenNeighborsLeaders;
 
     std::map<Ipv4Address, ClusterInfo*> addressToCluster;
-    std::map<Ipv4Address, ClusterNode*> clusterIdToNode;
+    std::map<Ipv4Address, ClusterNode*> idToNode;
     ClusterNode *myNode = nullptr;
 
 protected:
