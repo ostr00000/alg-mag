@@ -864,21 +864,45 @@ void ClusterAlg::recomputeRoute()
             Ipv4Address twoHopNeighborCluster = twoHopneighborsClusterVec.at(i);
 
             auto twoHopNodeExist = idToNode.find(twoHopNeighbor);
-            if (twoHopNodeExist == idToNode.end()) {
+            if (twoHopNodeExist != idToNode.end()) {
+                // skip already added nodes
+                continue;
+            }
+
+            auto twoHopNodeExist2 = twoHopNodesJustAdded.find(twoHopNeighbor);
+            if (twoHopNodeExist2 == twoHopNodesJustAdded.end()) {
                 // if node not exist yet then create and add the new node
                 twoHopNode = new ClusterNode(twoHopNeighbor);
                 clusterGraph->addNode(twoHopNode);
                 twoHopNodesJustAdded.insert(std::pair<Ipv4Address, ClusterNode*>(twoHopNeighbor, twoHopNode));
+
+//                // find node of 2 hop neighbor cluster leader
+//                ClusterNode *twoHopNeighborClusterNode = nullptr;
+//                auto clusterNodeExist = idToNode.find(twoHopNeighborCluster);
+//                if (clusterNodeExist != idToNode.end()) {
+//                    twoHopNeighborClusterNode = clusterNodeExist->second;
+//                }
+//                else {
+//                    auto clusterNodeExist2 = twoHopNodesJustAdded.find(twoHopNeighborCluster);
+//                    if (clusterNodeExist2 != twoHopNodesJustAdded.end()) {
+//                        twoHopNeighborClusterNode = clusterNodeExist2->second;
+//                    }
+//                    else {
+//                        //cluster head should be added already
+//                    }
+//                }
+//
+//                // connect 2 hop neighbor to its cluster
+//                if (twoHopNeighborClusterNode != nullptr && twoHopNeighborClusterNode != twoHopNode) {
+//                    int weight = 2;
+//                    auto link = new cTopology::Link(weight);
+//                    clusterGraph->addLink(link, twoHopNode, twoHopNeighborClusterNode);
+//                }
+
             }
             else {
-                auto twoHopNodeExist2 = twoHopNodesJustAdded.find(twoHopNeighbor);
-                if (twoHopNodeExist2 != twoHopNodesJustAdded.end()) {
-                    // if node exist here it means that there are multiple path
-                    twoHopNode = twoHopNodeExist2->second;
-                }
-                else {
-                    continue; // skip already added nodes
-                }
+                // if node exist here it means that there are multiple path
+                twoHopNode = twoHopNodeExist2->second;
             }
 
             int weight = 2;
