@@ -1,10 +1,3 @@
-/*
- * ClusterNode.cpp
- *
- *  Created on: Jul 17, 2020
- *      Author: ostro
- */
-
 #include "inet/routing/cluster_alg/ClusterNode.h"
 
 namespace inet {
@@ -47,15 +40,47 @@ std::string ClusterNode::toString(cTopology *topology)
         for (int k = 0, l = node->getNumOutLinks(); k < l; k++) {
             stream << fromNodeText << " -> ";
             cTopology::LinkOut *link = node->getLinkOut(k);
-            ClusterLink* cl = (ClusterLink*)(link);
-            std::string label = " [ label = \"" + cl->relation + "\" ]";
-            ClusterNode *otherNode = dynamic_cast<ClusterNode*>(link->getRemoteNode());
-            stream << getTextRepresentation(otherNode) << label << "\n";
+            ClusterLink *cl = (ClusterLink*) (link);
 
+            std::string label = ClusterNode::getLabel(cl);
+            std::string color = ClusterNode::getColor(cl);
+            ClusterNode *otherNode = dynamic_cast<ClusterNode*>(link->getRemoteNode());
+
+            stream << getTextRepresentation(otherNode)
+                    << label
+                    << color
+                    << "\n";
         }
     }
 
     stream << "}";
     return stream.str();
 }
+
+std::string ClusterNode::getLabel(ClusterLink *cl)
+{
+    return " [ label = \"" + cl->relation + "\" ]";
+//    return "";
+}
+
+std::string ClusterNode::getColor(ClusterLink *cl)
+{
+    static const std::map<std::string, std::string> colorMap = {
+            { "1hop", "green" },
+            { "1hop - its L", "orange" },
+            { "1hop L", "lightgreen" },
+            { "1hop - 2hop", "red" },
+            { "2hop - its L", "magenta" },
+            { "L-L", "blue" },
+    };
+    std::string color = "black";
+    auto exist = colorMap.find(cl->relation);
+    if (exist != colorMap.end()) {
+        color = exist->second;
+    }
+
+    return " [ color = \"" + color + "\" ]";
+//    return "";
+}
+
 }

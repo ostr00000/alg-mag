@@ -31,6 +31,7 @@ public:
     simtime_t expiryTime;
     unsigned int seq;
     std::vector<Ipv4Address> neighborClusters;
+    bool isForwarded = false;
 };
 
 class ClusterLink : public cTopology::Link
@@ -67,6 +68,8 @@ public:
 
     static std::string getTextRepresentation(ClusterNode *node);
     static std::string toString(cTopology *topology);
+    static std::string getLabel(ClusterLink *cl);
+    static std::string getColor(ClusterLink *cl);
 
 };
 }
