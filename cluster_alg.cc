@@ -115,7 +115,9 @@ void ClusterAlg::start()
     clusterId = Ipv4Address::UNSPECIFIED_ADDRESS;
     myIp = interface80211ptr->getIpv4Address();
 
-    auto time = simTime() + par("clusterUndecidedFirstTime").doubleValue() + uniform(0.0, par("maxVariance").doubleValue());
+    auto time = simTime()
+            + par("clusterUndecidedFirstTime").doubleValue()
+            + uniform(0.0, par("maxVariance").doubleValue());
     scheduleAt(time, clusterStateEvent);
 
 }
@@ -337,7 +339,9 @@ void ClusterAlg::setAllowedToForwardNodes(IntrusivePtr<inet::ClusterAlgTopologyC
                     clusterToNode.insert(std::pair<Ipv4Address, ClusterAlgIpv4Route*>(cluster, clusterRoute));
                     nodeToCluster.insert(std::pair<Ipv4Address, Ipv4Address>(id, cluster));
                 }
-                neighborClusters.insert(clusterRoute->neighborsClusterIds.begin(), clusterRoute->neighborsClusterIds.end());
+                neighborClusters.insert(
+                        clusterRoute->neighborsClusterIds.begin(),
+                        clusterRoute->neighborsClusterIds.end());
             }
         }
     }
@@ -390,7 +394,9 @@ void ClusterAlg::setAllowedToForwardNodes(IntrusivePtr<inet::ClusterAlgTopologyC
 
 }
 
-ClusterAlgIpv4Route* ClusterAlg::findBestCandidateToForward(Ipv4Address clusterId, std::multimap<Ipv4Address, ClusterAlgIpv4Route*> clusterToNode)
+ClusterAlgIpv4Route* ClusterAlg::findBestCandidateToForward(
+        Ipv4Address clusterId,
+        std::multimap<Ipv4Address, ClusterAlgIpv4Route*> clusterToNode)
 {
     ClusterAlgIpv4Route *bestCandidate = nullptr;
     for (auto itr = clusterToNode.find(clusterId); itr != clusterToNode.end(); itr++) {
@@ -429,7 +435,9 @@ void ClusterAlg::setNeighborsCluster(IntrusivePtr<inet::ClusterAlgTopologyContro
                 neighborClusters.insert(clusterRoute->clusterId);
             }
             else if (clusterRoute->state == NodeState::MEMBER) {
-                neighborClusters.insert(clusterRoute->neighborsClusterIds.begin(), clusterRoute->neighborsClusterIds.end());
+                neighborClusters.insert(
+                        clusterRoute->neighborsClusterIds.begin(),
+                        clusterRoute->neighborsClusterIds.end());
             }
         }
     }
@@ -476,7 +484,8 @@ void ClusterAlg::handleClusterStateEvent()
 
                     // if hasMoreUndecidedNeighbors or sameNumberButHigherId
                     if (clusterRoute->undecidedNeighborsNum > neighborBiggestUndecidedNeighbors
-                            || (clusterRoute->undecidedNeighborsNum == neighborBiggestUndecidedNeighbors && clusterRoute->getGateway() > idUndecided)) {
+                            || (clusterRoute->undecidedNeighborsNum == neighborBiggestUndecidedNeighbors
+                                    && clusterRoute->getGateway() > idUndecided)) {
                         neighborBiggestUndecidedNeighbors = clusterRoute->undecidedNeighborsNum;
                         idUndecided = clusterRoute->getGateway();
                     }
@@ -486,7 +495,8 @@ void ClusterAlg::handleClusterStateEvent()
 
         // become leader if number of undecided direct neighbors is greatest along all neighbors
         if (neighborBiggestUndecidedNeighbors < myUndecidedDirectNeighbors
-                || (neighborBiggestUndecidedNeighbors == myUndecidedDirectNeighbors && idUndecided > interface80211ptr->getIpv4Address())) {
+                || (neighborBiggestUndecidedNeighbors == myUndecidedDirectNeighbors
+                        && idUndecided > interface80211ptr->getIpv4Address())) {
             myState = NodeState::LEADER;
             clusterId = interface80211ptr->getIpv4Address();
             scheduleAt(simTime() + par("clusterLeader").doubleValue(), clusterStateEvent);
@@ -494,11 +504,16 @@ void ClusterAlg::handleClusterStateEvent()
 
             cancelEvent(helloEvent);
             scheduleAt(simTime(), helloEvent);
-            scheduleTopologyControl(simTime() + tcInterval + uniform(0.0, par("maxVariance").doubleValue()) + broadcastDelay->doubleValue());
+            scheduleTopologyControl(simTime()
+                    + tcInterval
+                    + uniform(0.0, par("maxVariance").doubleValue())
+                    + broadcastDelay->doubleValue());
             return;
         }
 
-        scheduleAt(simTime() + par("clusterUndecided").doubleValue() + uniform(0.0, par("maxVariance").doubleValue()), clusterStateEvent);
+        scheduleAt(
+                simTime() + par("clusterUndecided").doubleValue() + uniform(0.0, par("maxVariance").doubleValue()),
+                clusterStateEvent);
 
     }
     else if (myState == NodeState::MEMBER) {
@@ -563,7 +578,8 @@ void ClusterAlg::handleClusterStateEvent()
                 if (it->second > par("maxLeaderRepeats").intValue()) {
                     //check who should destroy -> my cluster or their
                     if (search->second->neighborsNum > myNeighborsNum
-                            || (search->second->neighborsNum == myNeighborsNum && search->first < interface80211ptr->getIpv4Address())) {
+                            || (search->second->neighborsNum == myNeighborsNum
+                                    && search->first < interface80211ptr->getIpv4Address())) {
                         myState = NodeState::UNDECIDED;
                         clusterId = Ipv4Address::UNSPECIFIED_ADDRESS;
                         bubble(("Destroying cluster -> become undecided" + clusterId.str()).c_str());
@@ -609,11 +625,13 @@ void ClusterAlg::handleMessageWhenUp(cMessage *msg)
         throw cRuntimeError("Message arrived on unknown gate %s", msg->getArrivalGate()->getName());
     }
 
-    auto type = staticPtrCast<ClusterAlgBase>(check_and_cast<Packet*>(msg)->peekData<ClusterAlgBase>()->dupShared())->getMessageType();
+    auto type = staticPtrCast<ClusterAlgBase>(
+            check_and_cast<Packet*>(msg)->peekData<ClusterAlgBase>()->dupShared())->getMessageType();
 
     if (type == MessageType::HELLO) {
         emit(helloSignal, 1);
-        auto hello = staticPtrCast<ClusterAlgHello>(check_and_cast<Packet*>(msg)->peekData<ClusterAlgHello>()->dupShared());
+        auto hello = staticPtrCast<ClusterAlgHello>(
+                check_and_cast<Packet*>(msg)->peekData<ClusterAlgHello>()->dupShared());
         receiveHello(hello);
     }
 
@@ -644,7 +662,8 @@ void ClusterAlg::receiveHello(IntrusivePtr<inet::ClusterAlgHello> &recHello)
     ClusterAlgIpv4Route *clusterAlgRoute = dynamic_cast<ClusterAlgIpv4Route*>(route);
 
     // if noRoute or newerSequenceNumber or otherNodeHasBetterMetric
-    if (route == nullptr || clusterAlgRoute == nullptr || (clusterAlgRoute->getIdFromSource() == srcId && clusterAlgRoute->sequencenumber < seq)
+    if (route == nullptr || clusterAlgRoute == nullptr
+            || (clusterAlgRoute->getIdFromSource() == srcId && clusterAlgRoute->sequencenumber < seq)
             || (clusterAlgRoute->getIdFromSource() != srcId && clusterAlgRoute->getMetric() > numHops)) {
         removeOldRoute(clusterAlgRoute);
         ClusterAlgIpv4Route *newRoute = addNewRoute(srcId, srcId, srcId, numHops, recHello);
@@ -664,7 +683,8 @@ void ClusterAlg::receiveHello(IntrusivePtr<inet::ClusterAlgHello> &recHello)
         route = rt->findBestMatchingRoute(neighbor);
         clusterAlgRoute = dynamic_cast<ClusterAlgIpv4Route*>(route);
 
-        if (route == nullptr || clusterAlgRoute == nullptr || (clusterAlgRoute->getIdFromSource() == srcId && clusterAlgRoute->sequencenumber < seq)
+        if (route == nullptr || clusterAlgRoute == nullptr
+                || (clusterAlgRoute->getIdFromSource() == srcId && clusterAlgRoute->sequencenumber < seq)
                 || (clusterAlgRoute->getIdFromSource() != srcId && clusterAlgRoute->getMetric() > numHops)) {
             removeOldRoute(clusterAlgRoute);
             addNewRoute(neighbor, srcId, srcId, numHops, recHello);
@@ -680,7 +700,8 @@ inline void ClusterAlg::removeOldRoute(ClusterAlgIpv4Route *route)
     }
 }
 
-ClusterAlgIpv4Route* ClusterAlg::addNewRoute(Ipv4Address dest, Ipv4Address next, Ipv4Address source, int distance,
+ClusterAlgIpv4Route* ClusterAlg::addNewRoute(Ipv4Address dest, Ipv4Address next,
+        Ipv4Address source, int distance,
         IntrusivePtr<inet::ClusterAlgHello> &recHello)
 {
     ClusterAlgIpv4Route *e = new ClusterAlgIpv4Route();
@@ -705,30 +726,55 @@ ClusterAlgIpv4Route* ClusterAlg::addNewRoute(Ipv4Address dest, Ipv4Address next,
 void ClusterAlg::receiveTopologyControl(IntrusivePtr<inet::ClusterAlgTopologyControl> &topologyControl)
 {
     bool newResut = updateTopologyControl(topologyControl);
-    if (!newResut) {
-        return;
+    if (newResut) {
+        recomputeRoute();
+        std::string graphString = ClusterNode::toString(clusterGraph);
+        EV_DEBUG << graphString;
     }
-    recomputeRoute();
-    std::string graphString = ClusterNode::toString(clusterGraph);
-    EV_DEBUG << graphString;
 
-    if (myState == NodeState::LEADER) {
-        forwardTC(topologyControl, true);
-    }
-    else if (myState == NodeState::MEMBER) {
-        //check if should forward
-        bool shouldForward = false;
-        for (int i = 0, j = topologyControl->getAllowedToForwardArraySize(); i < j; i++) {
-            Ipv4Address allowedToForward = topologyControl->getAllowedToForward(i);
-            if (allowedToForward == myIp) {
-                shouldForward = true;
-                break;
+    if (!isForwardedTopologyControl(topologyControl)) {
+
+        if (myState == NodeState::LEADER && newResut) {
+            forwardTC(topologyControl, true);
+        }
+        else if (myState == NodeState::MEMBER) {
+            //check if should forward
+            bool shouldForward = false;
+            for (int i = 0, j = topologyControl->getAllowedToForwardArraySize(); i < j; i++) {
+                Ipv4Address allowedToForward = topologyControl->getAllowedToForward(i);
+                if (allowedToForward == myIp) {
+                    shouldForward = true;
+                    break;
+                }
+            }
+
+            if (shouldForward) {
+                forwardTC(topologyControl, false);
             }
         }
+    }
+}
 
-        if (shouldForward) {
-            forwardTC(topologyControl, false);
+bool ClusterAlg::isForwardedTopologyControl(IntrusivePtr<inet::ClusterAlgTopologyControl> &topologyControl)
+{
+    auto src = topologyControl->getSrcId();
+    auto it = addressToCluster.find(src);
+    if (it != addressToCluster.end()) {
+        ClusterInfo *clusterInfo = it->second;
+        if (clusterInfo->seq == topologyControl->getSequencenumber()
+                && clusterInfo->isForwarded) {
+            return true;
         }
+    }
+    return false;
+}
+void ClusterAlg::setForwardedTopologyControl(IntrusivePtr<inet::ClusterAlgTopologyControl> &topologyControl)
+{
+    auto src = topologyControl->getSrcId();
+    auto it = addressToCluster.find(src);
+    if (it != addressToCluster.end()) {
+        ClusterInfo *clusterInfo = it->second;
+        clusterInfo->isForwarded = true;
     }
 }
 
@@ -1033,6 +1079,8 @@ bool ClusterAlg::updateTopologyControl(IntrusivePtr<inet::ClusterAlgTopologyCont
 
 void ClusterAlg::forwardTC(IntrusivePtr<inet::ClusterAlgTopologyControl> &topologyControl, bool resetForwardNodes)
 {
+    setForwardedTopologyControl(topologyControl);
+
     auto tc = makeShared<ClusterAlgTopologyControl>();
 
     tc->setChunkLength(b(128)); ///size of message in bits
@@ -1175,10 +1223,6 @@ Ipv4Address ClusterAlg::calculateRoute(Ipv4Address address)
         }
     }
 
-//    if (nextAddress != Ipv4Address::UNSPECIFIED_ADDRESS) {
-//        calculateRoute(nextAddress);
-//    }
-
     return nextAddress;
 
 }
@@ -1224,7 +1268,8 @@ ClusterAlgIpv4Route* ClusterAlg::addNewRouteToClusterLeader(Ipv4Address dest, Ip
     return addNewRoute(dest, gateway, clusterId, distance, state);
 }
 
-ClusterAlgIpv4Route* ClusterAlg::addNewRoute(Ipv4Address dest, Ipv4Address gateway, Ipv4Address clusterId, int distance, NodeState state)
+ClusterAlgIpv4Route* ClusterAlg::addNewRoute(Ipv4Address dest, Ipv4Address gateway, Ipv4Address clusterId, int distance,
+        NodeState state)
 {
     Ipv4Address source = this->myIp;
 

@@ -87,7 +87,11 @@ protected:
     void setAllowedToForwardNodes(IntrusivePtr<inet::ClusterAlgTopologyControl> &tc);
     ClusterAlgIpv4Route* findBestCandidateToForward(Ipv4Address clusterId, std::multimap<Ipv4Address, ClusterAlgIpv4Route*> clusterToNode);
     void setNeighborsCluster(IntrusivePtr<inet::ClusterAlgTopologyControl> &tc);
+
     bool updateTopologyControl(IntrusivePtr<inet::ClusterAlgTopologyControl> &topologyControl);
+    bool isForwardedTopologyControl(IntrusivePtr<inet::ClusterAlgTopologyControl> &topologyControl);
+    void setForwardedTopologyControl(IntrusivePtr<inet::ClusterAlgTopologyControl> &topologyControl);
+
     void scheduleTopologyControl(simtime_t scheduleTime);
     void handleClusterStateEvent();
     void refreshTextFromState();
