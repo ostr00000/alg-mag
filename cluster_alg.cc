@@ -309,6 +309,16 @@ void ClusterAlg::handleTopolgyEvent()
     packet->addTag<DispatchProtocolReq>()->setProtocol(&Protocol::ipv4);
 
     send(packet, "ipOut");
+    // TODO remove, to test multiple sned
+//    auto packet2 = new Packet("TopologyControl", tc);
+//        auto addressReq2 = packet2->addTag<L3AddressReq>();
+//        addressReq2->setDestAddress(Ipv4Address(255, 255, 255, 255));
+//        addressReq2->setSrcAddress(interface80211ptr->getIpv4Address());
+//        packet2->addTag<InterfaceReq>()->setInterfaceId(interface80211ptr->getInterfaceId());
+//        packet2->addTag<PacketProtocolTag>()->setProtocol(&Protocol::manet);
+//        packet2->addTag<DispatchProtocolReq>()->setProtocol(&Protocol::ipv4);
+//        send(packet2, "ipOut");
+
 
     scheduleTopologyControl(simTime() + tcInterval + broadcastDelay->doubleValue());
     bubble("Sending topology control message");
