@@ -35,6 +35,8 @@ QueueSequentialTransmission::~QueueSequentialTransmission()
 void QueueSequentialTransmission::initialize()
 {
     forwardEvent = new cMessage("forwardEvent");
+    WATCH(size);
+    WATCH(lastTimeSend);
 }
 
 void QueueSequentialTransmission::handleMessage(cMessage *msg)
@@ -54,36 +56,29 @@ void QueueSequentialTransmission::sendQueuedMessage()
         return;  // sending is already planned
     }
 
-    simtime_t transmissionFinish = getTransmissionFinishTime();
-    if (transmissionFinish > 0) {
-        scheduleAt(simTime() + transmissionFinish, forwardEvent); // need to wait a bit
+    simtime_t currentTime = simTime();
+    if (currentTime == lastTimeSend) {
+        scheduleForvardEvent();
         return;
     }
 
     if (!myQueue.empty()) {
         cMessage *msg = myQueue.front();
         myQueue.pop();
+
+        lastTimeSend = currentTime;
         send(msg, "out");
 
-        if (!myQueue.empty()) { // there are more messages to send
-            transmissionFinish = getTransmissionFinishTime();
-            scheduleAt(simTime() + transmissionFinish, forwardEvent);
+        if (!myQueue.empty()) {
+            // there are more messages to send, those will be send almost immediately
+            scheduleForvardEvent();
         }
     }
+    size = myQueue.size();
 }
 
-simtime_t QueueSequentialTransmission::getTransmissionFinishTime()
-{
-    cGate *gateOut = gate("out");
-    cChannel *channel = gateOut->getChannel();
-    simtime_t endTransmissionTime = channel->getTransmissionFinishTime();
-    simtime_t now = simTime();
-
-    simtime_t delayToWait = 0;
-    if (endTransmissionTime > now) {
-        delayToWait = endTransmissionTime - now;
-    }
-    return delayToWait;
+void QueueSequentialTransmission::scheduleForvardEvent(){
+    scheduleAt(simTime() + SimTime(340, SIMTIME_PS), forwardEvent);
 }
 
 } //namespace

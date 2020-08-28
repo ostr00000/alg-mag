@@ -26,10 +26,12 @@ namespace inet {
 class QueueSequentialTransmission : public cSimpleModule
 {
     cMessage *forwardEvent = nullptr;
-
+    simtime_t lastTimeSend;
     std::queue<cMessage*> myQueue;
-    simtime_t getTransmissionFinishTime();
+    int size = 0;
+
     void sendQueuedMessage();
+    void scheduleForvardEvent();
 public:
     QueueSequentialTransmission();
     ~QueueSequentialTransmission();
