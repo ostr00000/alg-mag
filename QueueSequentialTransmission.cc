@@ -14,6 +14,9 @@
 // 
 
 #include "QueueSequentialTransmission.h"
+#include "inet/common/IProtocolRegistrationListener.h"
+#include "inet/common/ModuleAccess.h"
+#include "inet/common/ProtocolTag_m.h"
 
 namespace inet {
 
@@ -37,6 +40,9 @@ void QueueSequentialTransmission::initialize()
     forwardEvent = new cMessage("forwardEvent");
     WATCH(size);
     WATCH(lastTimeSend);
+
+    registerService(Protocol::manet, nullptr, gate("in"));
+    registerProtocol(Protocol::manet, gate("out"), nullptr);
 }
 
 void QueueSequentialTransmission::handleMessage(cMessage *msg)

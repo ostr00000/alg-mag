@@ -21,8 +21,7 @@ network ClusterAlgRouter extends AdhocHost
     connections:
         clusterAlg.ipOut --> queue.in;
         queue.out --> tn.in++;
-//        clusterAlg.ipOut --> tn.in++;
-
+      
         clusterAlg.ipIn <-- tn.out++;
 }
 
