@@ -14,14 +14,9 @@ network ClusterAlgRouter extends AdhocHost
         clusterAlg: ClusterAlg {
             @display("p=800,376");
         }
-        queue: QueueSequentialTransmission {
-            @display("p=900,376");
-        }
 
     connections:
-        clusterAlg.ipOut --> queue.in;
-        queue.out --> tn.in++;
-      
+        clusterAlg.ipOut --> tn.in++;
         clusterAlg.ipIn <-- tn.out++;
 }
 
