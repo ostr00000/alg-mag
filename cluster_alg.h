@@ -81,7 +81,7 @@ protected:
     inline void removeOldRoute(ClusterAlgIpv4Route *route);
 
     void handleHelloEvent();
-    void handleTopolgyEvent();
+    void handleTopologyEvent();
 
     void forwardTC(IntrusivePtr<inet::ClusterAlgTopologyControl> &topologyControl, bool resetForwardNodes);
     void setAllowedToForwardNodes(IntrusivePtr<inet::ClusterAlgTopologyControl> &tc);
@@ -89,7 +89,8 @@ protected:
     void setNeighborsCluster(IntrusivePtr<inet::ClusterAlgTopologyControl> &tc);
 
     bool updateTopologyControl(IntrusivePtr<inet::ClusterAlgTopologyControl> &topologyControl);
-    bool isForwardedTopologyControl(IntrusivePtr<inet::ClusterAlgTopologyControl> &topologyControl);
+    bool canForwardTC(IntrusivePtr<inet::ClusterAlgTopologyControl> &topologyControl, bool isNewResult);
+    ClusterInfo* getClusterInfoForTC(IntrusivePtr<inet::ClusterAlgTopologyControl> &topologyControl);
     void setForwardedTopologyControl(IntrusivePtr<inet::ClusterAlgTopologyControl> &topologyControl);
 
     void scheduleTopologyControl(simtime_t scheduleTime);

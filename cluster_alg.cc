@@ -141,7 +141,7 @@ void ClusterAlg::handleSelfMessage(cMessage *msg)
         handleHelloEvent();
     }
     else if (msg == tcEvent) {
-        handleTopolgyEvent();
+        handleTopologyEvent();
     }
     else if (msg == clusterStateEvent) {
         NodeState stateBefore = myState;
@@ -248,7 +248,7 @@ void ClusterAlg::handleHelloEvent()
     bubble("Sending new hello message");
 }
 
-void ClusterAlg::handleTopolgyEvent()
+void ClusterAlg::handleTopologyEvent()
 {
     int index;
     auto tc = makeShared<ClusterAlgTopologyControl>();
@@ -353,7 +353,7 @@ void ClusterAlg::setAllowedToForwardNodes(IntrusivePtr<inet::ClusterAlgTopologyC
         nodeToCluster.erase(leader);
     }
 
-    std::vector<Ipv4Address> allowedToForward;
+    std::set<Ipv4Address> allowedToForward;
     for (auto remainingCluster : neighborClusters) {
 
         // find node with access to remainingCluster
@@ -376,13 +376,13 @@ void ClusterAlg::setAllowedToForwardNodes(IntrusivePtr<inet::ClusterAlgTopologyC
                 auto c = bestCandidate->neighborsClusterIds[i];
                 if (c == remainingCluster) {
                     auto node = bestCandidate->neighborsIds[i];
-                    allowedToForward.push_back(node);
+                    allowedToForward.insert(node);
                     break;
                 }
             }
         }
 
-        allowedToForward.push_back(bestCandidate->getIdFromSource());
+        allowedToForward.insert(bestCandidate->getIdFromSource());
     }
 
     tc->setAllowedToForwardArraySize(allowedToForward.size());
@@ -458,6 +458,7 @@ void ClusterAlg::handleClusterStateEvent()
         int myUndecidedDirectNeighbors = 0;
         int neighborBiggestUndecidedNeighbors = -1;
         Ipv4Address idUndecided = Ipv4Address::UNSPECIFIED_ADDRESS;
+        std::vector<ClusterAlgIpv4Route*> leaderPropositions;
 
         // find any leader
         for (int i = 0, j = rt->getNumRoutes(); i < j; i++) {
@@ -469,15 +470,7 @@ void ClusterAlg::handleClusterStateEvent()
             // if isDirectNeighbor and isLeader
             if (clusterRoute->distance == 1) {
                 if (clusterRoute->state == NodeState::LEADER) {
-                    myState = NodeState::MEMBER;
-                    clusterId = clusterRoute->getGateway();
-                    scheduleAt(simTime() + par("clusterMember").doubleValue(), clusterStateEvent);
-                    bubble(("Become member of " + clusterId.str()).c_str());
-
-                    cancelEvent(helloEvent);
-                    scheduleAt(simTime(), helloEvent);
-                    return;
-
+                    leaderPropositions.push_back(clusterRoute);
                 }
                 else if (clusterRoute->state == NodeState::UNDECIDED) {
                     myUndecidedDirectNeighbors += 1;
@@ -491,6 +484,27 @@ void ClusterAlg::handleClusterStateEvent()
                     }
                 }
             }
+        }
+
+        if (leaderPropositions.size() > 0) {
+            auto bestLeaderIt = std::max_element(leaderPropositions.begin(), leaderPropositions.end(),
+                    [](ClusterAlgIpv4Route const *a, ClusterAlgIpv4Route const *b) {
+                        return a->acquaintanceCounter > b->acquaintanceCounter;
+                    });
+
+            if (bestLeaderIt == leaderPropositions.end()) {
+                throw cRuntimeError("Cannot find leader");
+            }
+            ClusterAlgIpv4Route *bestLeader = *bestLeaderIt;
+
+            myState = NodeState::MEMBER;
+            clusterId = bestLeader->getGateway();
+            scheduleAt(simTime() + par("clusterMember").doubleValue(), clusterStateEvent);
+            bubble(("Become member of " + clusterId.str()).c_str());
+
+            cancelEvent(helloEvent);
+            scheduleAt(simTime(), helloEvent);
+            return;
         }
 
         // become leader if number of undecided direct neighbors is greatest along all neighbors
@@ -710,6 +724,7 @@ ClusterAlgIpv4Route* ClusterAlg::addNewRoute(Ipv4Address dest, Ipv4Address next,
     e->setSourceFromId(source);
     e->setMetric(distance);
     e->distance = distance;
+    e->acquaintanceCounter = (distance == 1) ? e->acquaintanceCounter + 1 : 0;
     e->clusterId = recHello->getClusterHeadId();
     e->sequencenumber = recHello->getSequencenumber();
     e->undecidedNeighborsNum = recHello->getUndecidedNeighborsNum();
@@ -725,55 +740,69 @@ ClusterAlgIpv4Route* ClusterAlg::addNewRoute(Ipv4Address dest, Ipv4Address next,
 }
 void ClusterAlg::receiveTopologyControl(IntrusivePtr<inet::ClusterAlgTopologyControl> &topologyControl)
 {
-    bool newResut = updateTopologyControl(topologyControl);
-    if (newResut) {
+    bool isNewResult = updateTopologyControl(topologyControl);
+    if (isNewResult) {
         recomputeRoute();
         std::string graphString = ClusterNode::toString(clusterGraph);
         EV_DEBUG << graphString;
     }
 
-    if (!isForwardedTopologyControl(topologyControl)) {
-
-        if (myState == NodeState::LEADER && newResut) {
-            forwardTC(topologyControl, true);
-        }
-        else if (myState == NodeState::MEMBER) {
-            //check if should forward
-            bool shouldForward = false;
-            for (int i = 0, j = topologyControl->getAllowedToForwardArraySize(); i < j; i++) {
-                Ipv4Address allowedToForward = topologyControl->getAllowedToForward(i);
-                if (allowedToForward == myIp) {
-                    shouldForward = true;
-                    break;
-                }
-            }
-
-            if (shouldForward) {
-                forwardTC(topologyControl, false);
-            }
-        }
+    if (canForwardTC(topologyControl, isNewResult)) {
+        bool resetForwardNodes = (myState == NodeState::LEADER);
+        forwardTC(topologyControl, resetForwardNodes);
     }
 }
 
-bool ClusterAlg::isForwardedTopologyControl(IntrusivePtr<inet::ClusterAlgTopologyControl> &topologyControl)
+bool ClusterAlg::canForwardTC(IntrusivePtr<inet::ClusterAlgTopologyControl> &topologyControl, bool isNewResult)
 {
-    auto src = topologyControl->getSrcId();
-    auto it = addressToCluster.find(src);
-    if (it != addressToCluster.end()) {
-        ClusterInfo *clusterInfo = it->second;
-        if (clusterInfo->seq == topologyControl->getSequencenumber()
-                && clusterInfo->isForwarded) {
+    if (topologyControl->getSrcId() == myIp) {
+        return false;
+    }
+
+    // ignore old topologyControl
+    auto clusterInfo = getClusterInfoForTC(topologyControl);
+    if (clusterInfo->seq != topologyControl->getSequencenumber()) {
+        return false;
+    }
+
+    // ignore already forwarded
+    if (clusterInfo->isForwarded) {
+        return false;
+    }
+
+    // leaders always forward new messages
+    if (myState == NodeState::LEADER) {
+        if (isNewResult) {
+            return true;
+        }
+        return false;
+    }
+
+    // otherwise forward only if my id is in allowed to forward list
+    // we must check every time, because it is possible that our leader add our id to the list
+    for (int i = 0, j = topologyControl->getAllowedToForwardArraySize(); i < j; i++) {
+        Ipv4Address allowedToForward = topologyControl->getAllowedToForward(i);
+        if (allowedToForward == myIp) {
             return true;
         }
     }
     return false;
 }
-void ClusterAlg::setForwardedTopologyControl(IntrusivePtr<inet::ClusterAlgTopologyControl> &topologyControl)
+ClusterInfo* ClusterAlg::getClusterInfoForTC(IntrusivePtr<inet::ClusterAlgTopologyControl> &topologyControl)
 {
     auto src = topologyControl->getSrcId();
     auto it = addressToCluster.find(src);
     if (it != addressToCluster.end()) {
         ClusterInfo *clusterInfo = it->second;
+        return clusterInfo;
+    }
+    return nullptr;
+}
+
+void ClusterAlg::setForwardedTopologyControl(IntrusivePtr<inet::ClusterAlgTopologyControl> &topologyControl)
+{
+    auto clusterInfo = getClusterInfoForTC(topologyControl);
+    if (clusterInfo != nullptr) {
         clusterInfo->isForwarded = true;
     }
 }

@@ -37,6 +37,7 @@ protected:
 public:
     unsigned int sequencenumber; // originated from destination. Ensures loop freeness.
     NodeState state;
+    int acquaintanceCounter = 0;
     int undecidedNeighborsNum = -1;
     int distance;
     int neighborsNum;
