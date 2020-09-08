@@ -15,7 +15,7 @@ network ClusterAlgNetwork
 {
     parameters:
         int numHosts;
-        @display("bgb=650,650");
+        @display("bgb=950,950");
     submodules:
         configurator: Ipv4NetworkConfigurator {
             parameters:

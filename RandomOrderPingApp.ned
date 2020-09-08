@@ -17,6 +17,9 @@ package inet.routing.cluster_alg;
 
 import inet.applications.pingapp.PingApp;
 
-simple RandomOrderPingApp extends PingApp{
-	@class(RandomOrderPingApp);
+simple RandomOrderPingApp extends PingApp
+{
+    @class(RandomOrderPingApp);
+    @signal[hopNumberSignal](type="long");
+    @statistic[hopNum](title="Number of hops in PING response message"; source="hopNumberSignal"; record=count,vector);
 }

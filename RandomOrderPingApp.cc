@@ -22,6 +22,14 @@ namespace inet {
 
 Define_Module(RandomOrderPingApp);
 
+void RandomOrderPingApp::initialize(int stage)
+{
+    if (stage == INITSTAGE_LOCAL) {
+        hopNumberSignal = registerSignal("hopNumberSignal");
+    }
+    PingApp::initialize(stage);
+}
+
 void RandomOrderPingApp::handleSelfMessage(cMessage *msg)
 {
     if (msg->getKind() == PING_CHANGE_ADDR) {
@@ -35,6 +43,14 @@ std::vector<L3Address> RandomOrderPingApp::getAllAddresses()
     auto allAddresses = PingApp::getAllAddresses();
     std::random_shuffle(allAddresses.begin(), allAddresses.end());
     return allAddresses;
+}
+
+void RandomOrderPingApp::processPingResponse(int originatorId, int seqNo, Packet *packet)
+{
+    auto msgHopCountTag = packet->findTag<HopLimitInd>();
+    int msgHopCount = msgHopCountTag ? msgHopCountTag->getHopLimit() : -1;
+    emit(hopNumberSignal, msgHopCount);
+    PingApp::processPingResponse(originatorId, seqNo, packet);
 }
 
 } /* namespace inet */

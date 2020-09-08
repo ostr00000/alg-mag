@@ -17,14 +17,19 @@
 #define INET_ROUTING_CLUSTER_ALG_RANDOMORDERPINGAPP_H_
 
 #include "inet/applications/pingapp/PingApp.h"
+#include "inet/networklayer/common/HopLimitTag_m.h"
 
 namespace inet {
 
 class RandomOrderPingApp: public PingApp
 {
+    simsignal_t hopNumberSignal;
+
 protected:
+    void initialize(int stage) override;
     void handleSelfMessage(cMessage *msg) override;
     std::vector<L3Address> getAllAddresses() override;
+    void processPingResponse(int originatorId, int seqNo, Packet *packet) override;
 };
 
 } /* namespace inet */
