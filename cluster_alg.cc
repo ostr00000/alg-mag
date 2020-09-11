@@ -268,7 +268,7 @@ void ClusterAlg::handleTopologyEvent()
     rt->purge();
     for (int k = 0, total = rt->getNumRoutes(); k < total; k++) {
         ClusterAlgIpv4Route *route = dynamic_cast<ClusterAlgIpv4Route*>(rt->getRoute(k));
-        if (route != nullptr && route->getMetric() == 1) {
+        if (route != nullptr && route->distance == 1) {
             if (route->clusterId == myIp) {
                 auto id = route->getIdFromSource();
                 members.push_back(id);
@@ -1164,11 +1164,17 @@ INetfilter::IHook::Result ClusterAlg::ensureRouteForDatagram(Packet *datagram)
         throw cRuntimeError("Unsupported address type");
     }
     Ipv4Address address = destAddr.toIpv4();
-    if (address == Ipv4Address::ALLONES_ADDRESS) {
+    if (address == Ipv4Address::ALLONES_ADDRESS || address == Ipv4Address::LOOPBACK_ADDRESS) {
         return INetfilter::IHook::Result::ACCEPT;
     }
 
     Ipv4Address gateway = calculateRoute(address);
+    if (gateway == Ipv4Address::UNSPECIFIED_ADDRESS) {
+        auto eventNumber = getSimulation()->getEventNumber();
+        auto gatewayStr2 = gateway.str(true);
+        Ipv4Address gateway = calculateRoute(address);
+    }
+
     auto gatewayStr = gateway.str(true);
     std::string graphString = ClusterNode::toString(clusterGraph);
     EV_DEBUG << graphString;
