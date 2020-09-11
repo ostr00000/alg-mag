@@ -836,32 +836,6 @@ void ClusterAlg::recomputeRoute()
     clusterGraph->addNode(myNode);
     idToNode.insert(std::pair<Ipv4Address, ClusterNode*>(this->myIp, myNode));
 
-    //add connection between cluster heads
-    for (int i = 0, j = clusterGraph->getNumNodes(); i < j; i++) {
-        auto curNode = dynamic_cast<ClusterNode*>(clusterGraph->getNode(i));
-
-        // it is this node
-        if (curNode->clusterInfo == nullptr) {
-            continue;
-        }
-
-        for (Ipv4Address otherClusterId : curNode->clusterInfo->neighborClusters) {
-            auto otherNode = idToNode.find(otherClusterId);
-            if (otherNode == idToNode.end()) {
-                continue;
-            }
-            if (otherNode->second == curNode) {
-                continue;
-            }
-
-            int weight = 8; // must be greater than direct and 2-hop neighbors
-            auto link = new ClusterLink(weight);
-            link->relation = "L-L";
-            // graph is directed but we get reverse link when we process other node
-            clusterGraph->addLink(link, curNode, otherNode->second);
-        }
-    }
-
     //search for my members and neighbor clusters
     std::set<Ipv4Address> neighborClusters;
     std::map<Ipv4Address, ClusterAlgIpv4Route*> oneHopNeighborToRoute;
@@ -1018,6 +992,33 @@ void ClusterAlg::recomputeRoute()
             clusterGraph->addLink(link, oneHopNode, twoHopNode);
         }
     }
+
+    //add connection between cluster heads
+     for (int i = 0, j = clusterGraph->getNumNodes(); i < j; i++) {
+         auto curNode = dynamic_cast<ClusterNode*>(clusterGraph->getNode(i));
+
+         // it is this node
+         if (curNode->clusterInfo == nullptr) {
+             continue;
+         }
+
+         for (Ipv4Address otherClusterId : curNode->clusterInfo->neighborClusters) {
+             auto otherNode = idToNode.find(otherClusterId);
+             if (otherNode == idToNode.end()) {
+                 continue;
+             }
+             if (otherNode->second == curNode) {
+                 continue;
+             }
+
+             int weight = 8; // must be greater than direct and 2-hop neighbors
+             auto link = new ClusterLink(weight);
+             link->relation = "L-L";
+             // graph is directed but we get reverse link when we process other node
+             clusterGraph->addLink(link, curNode, otherNode->second);
+         }
+     }
+
 
     addressToClusterSize = addressToCluster.size();
 }
