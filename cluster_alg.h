@@ -21,7 +21,6 @@
 #include "inet/routing/cluster_alg/ClusterNode.h"
 namespace inet {
 
-
 class INET_API ClusterAlg : public RoutingProtocolBase, public NetfilterBase::HookBase
 {
 private:
@@ -45,9 +44,14 @@ private:
     unsigned int topologySeq = 0;
     simtime_t routeLifetime;
     cModule *host = nullptr;
+    bool debugAlert = false;
 
     Ipv4Address myIp;
     int addressToClusterSize = 0;
+
+    bool forcingTc = false;
+    std::set<Ipv4Address> myMembers;
+
 public:
     NodeState myState;
     Ipv4Address clusterId;
@@ -75,8 +79,8 @@ protected:
     ClusterAlgIpv4Route* addNewRoute(Ipv4Address dest, Ipv4Address next, Ipv4Address source, int distance,
             IntrusivePtr<inet::ClusterAlgHello> &recHello);
     ClusterAlgIpv4Route* addNewRouteToClusterLeader(Ipv4Address dest, Ipv4Address clusterId, int distance);
-    ClusterAlgIpv4Route* addNewRoute(Ipv4Address dest, Ipv4Address gateway, Ipv4Address clusterId, int distance, NodeState state);
-
+    ClusterAlgIpv4Route* addNewRoute(Ipv4Address dest, Ipv4Address gateway, Ipv4Address clusterId, int distance,
+            NodeState state);
 
     inline void removeOldRoute(ClusterAlgIpv4Route *route);
 
@@ -85,7 +89,8 @@ protected:
 
     void forwardTC(IntrusivePtr<inet::ClusterAlgTopologyControl> &topologyControl, bool resetForwardNodes);
     void setAllowedToForwardNodes(IntrusivePtr<inet::ClusterAlgTopologyControl> &tc);
-    ClusterAlgIpv4Route* findBestCandidateToForward(Ipv4Address clusterId, std::multimap<Ipv4Address, ClusterAlgIpv4Route*> clusterToNode);
+    ClusterAlgIpv4Route* findBestCandidateToForward(Ipv4Address clusterId,
+            std::multimap<Ipv4Address, ClusterAlgIpv4Route*> clusterToNode);
     void setNeighborsCluster(IntrusivePtr<inet::ClusterAlgTopologyControl> &tc);
 
     bool updateTopologyControl(IntrusivePtr<inet::ClusterAlgTopologyControl> &topologyControl);

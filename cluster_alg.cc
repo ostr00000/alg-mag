@@ -42,6 +42,7 @@ void ClusterAlg::initialize(int stage)
         routeLifetime = par("routeLifetime").doubleValue();
         helloInterval = par("helloInterval");
         tcInterval = par("tcInterval");
+        debugAlert = par("debugAlert");
 
         helloEvent = new cMessage("helloEvent");
         tcEvent = new cMessage("topologyEvent");
@@ -250,6 +251,8 @@ void ClusterAlg::handleHelloEvent()
 
 void ClusterAlg::handleTopologyEvent()
 {
+    forcingTc = false;
+
     int index;
     auto tc = makeShared<ClusterAlgTopologyControl>();
 
@@ -279,6 +282,9 @@ void ClusterAlg::handleTopologyEvent()
             }
         }
     }
+
+    myMembers.clear();
+    myMembers.insert(members.begin(), members.end());
 
     // set neighbor clusters
     tc->setNeighborsClusterArraySize(neighborClusters.size());
@@ -497,6 +503,7 @@ void ClusterAlg::handleClusterStateEvent()
             }
             ClusterAlgIpv4Route *bestLeader = *bestLeaderIt;
 
+            myMembers.clear();
             myState = NodeState::MEMBER;
             clusterId = bestLeader->getGateway();
             scheduleAt(simTime() + par("clusterMember").doubleValue(), clusterStateEvent);
@@ -511,6 +518,7 @@ void ClusterAlg::handleClusterStateEvent()
         if (neighborBiggestUndecidedNeighbors < myUndecidedDirectNeighbors
                 || (neighborBiggestUndecidedNeighbors == myUndecidedDirectNeighbors
                         && idUndecided > interface80211ptr->getIpv4Address())) {
+            myMembers.clear();
             myState = NodeState::LEADER;
             clusterId = interface80211ptr->getIpv4Address();
             scheduleAt(simTime() + par("clusterLeader").doubleValue(), clusterStateEvent);
@@ -519,7 +527,6 @@ void ClusterAlg::handleClusterStateEvent()
             cancelEvent(helloEvent);
             scheduleAt(simTime(), helloEvent);
             scheduleTopologyControl(simTime()
-                    + tcInterval
                     + uniform(0.0, par("maxVariance").doubleValue())
                     + broadcastDelay->doubleValue());
             return;
@@ -594,6 +601,7 @@ void ClusterAlg::handleClusterStateEvent()
                     if (search->second->neighborsNum > myNeighborsNum
                             || (search->second->neighborsNum == myNeighborsNum
                                     && search->first < interface80211ptr->getIpv4Address())) {
+                        myMembers.clear();
                         myState = NodeState::UNDECIDED;
                         clusterId = Ipv4Address::UNSPECIFIED_ADDRESS;
                         bubble(("Destroying cluster -> become undecided" + clusterId.str()).c_str());
@@ -681,6 +689,25 @@ void ClusterAlg::receiveHello(IntrusivePtr<inet::ClusterAlgHello> &recHello)
             || (clusterAlgRoute->getIdFromSource() != srcId && clusterAlgRoute->getMetric() > numHops)) {
         removeOldRoute(clusterAlgRoute);
         ClusterAlgIpv4Route *newRoute = addNewRoute(srcId, srcId, srcId, numHops, recHello);
+
+        // leader route must have shorter life time
+        if (srcId == clusterId) {
+            newRoute->setExpiryTime(simTime() + helloInterval);
+        }
+        if (newRoute->clusterId == myIp && myState == NodeState::LEADER) {
+            auto memberIt = myMembers.find(srcId);
+            if (memberIt != myMembers.end()) {
+                // it is a known member
+            }
+            else {
+                // it is a new one
+                myMembers.insert(srcId);
+                if (!forcingTc) {
+                    forcingTc = true;
+                    scheduleTopologyControl(simTime() + 1.);
+                }
+            }
+        }
 
         for (int i = 0, c = recHello->getNeighborsClusterArraySize(); i < c; i++) {
             newRoute->neighborsClusterIds.push_back(recHello->getNeighborsCluster(i));
@@ -994,31 +1021,30 @@ void ClusterAlg::recomputeRoute()
     }
 
     //add connection between cluster heads
-     for (int i = 0, j = clusterGraph->getNumNodes(); i < j; i++) {
-         auto curNode = dynamic_cast<ClusterNode*>(clusterGraph->getNode(i));
+    for (int i = 0, j = clusterGraph->getNumNodes(); i < j; i++) {
+        auto curNode = dynamic_cast<ClusterNode*>(clusterGraph->getNode(i));
 
-         // it is this node
-         if (curNode->clusterInfo == nullptr) {
-             continue;
-         }
+        // it is this node
+        if (curNode->clusterInfo == nullptr) {
+            continue;
+        }
 
-         for (Ipv4Address otherClusterId : curNode->clusterInfo->neighborClusters) {
-             auto otherNode = idToNode.find(otherClusterId);
-             if (otherNode == idToNode.end()) {
-                 continue;
-             }
-             if (otherNode->second == curNode) {
-                 continue;
-             }
+        for (Ipv4Address otherClusterId : curNode->clusterInfo->neighborClusters) {
+            auto otherNode = idToNode.find(otherClusterId);
+            if (otherNode == idToNode.end()) {
+                continue;
+            }
+            if (otherNode->second == curNode) {
+                continue;
+            }
 
-             int weight = 8; // must be greater than direct and 2-hop neighbors
-             auto link = new ClusterLink(weight);
-             link->relation = "L-L";
-             // graph is directed but we get reverse link when we process other node
-             clusterGraph->addLink(link, curNode, otherNode->second);
-         }
-     }
-
+            int weight = 8; // must be greater than direct and 2-hop neighbors
+            auto link = new ClusterLink(weight);
+            link->relation = "L-L";
+            // graph is directed but we get reverse link when we process other node
+            clusterGraph->addLink(link, curNode, otherNode->second);
+        }
+    }
 
     addressToClusterSize = addressToCluster.size();
 }
@@ -1170,8 +1196,14 @@ INetfilter::IHook::Result ClusterAlg::ensureRouteForDatagram(Packet *datagram)
     }
 
     Ipv4Address gateway = calculateRoute(address);
-    if (gateway == Ipv4Address::UNSPECIFIED_ADDRESS) {
+    if (debugAlert && gateway == Ipv4Address::UNSPECIFIED_ADDRESS) {
+        debugAlert = false;
         auto eventNumber = getSimulation()->getEventNumber();
+        char text[128];
+        sprintf(text, "Event number: %ld, myIp %s searchFor %s", eventNumber,
+                myIp.str(true).c_str(), address.str(true).c_str());
+        getSimulation()->getActiveEnvir()->alert(text);
+
         auto gatewayStr2 = gateway.str(true);
         Ipv4Address gateway = calculateRoute(address);
     }
