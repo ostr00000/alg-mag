@@ -36,6 +36,7 @@ private:
     cMessage *tcEvent = nullptr;
     cMessage *clusterStateEvent = nullptr;
     cMessage *topolgyControlEvent = nullptr;
+    cMessage *additonalForwardEvent= nullptr;
 
     cPar *broadcastDelay = nullptr;
     InterfaceEntry *interface80211ptr = nullptr;
@@ -46,12 +47,14 @@ private:
     cModule *host = nullptr;
     bool debugAlert = false;
     bool hasTarget = false;
+    bool useAdditionalForward = true;
 
     Ipv4Address myIp;
     int addressToClusterSize = 0;
 
     bool forcingTc = false;
     std::set<Ipv4Address> myMembers;
+    std::vector<std::pair<IntrusivePtr<inet::ClusterAlgTopologyControl>, SimTime>> additionalForwardQueue;
 
 public:
     NodeState myState;
@@ -91,6 +94,7 @@ protected:
     void handleTopologyEvent();
 
     void forwardTC(IntrusivePtr<inet::ClusterAlgTopologyControl> &topologyControl, bool resetForwardNodes);
+    void forwardTC(IntrusivePtr<inet::ClusterAlgTopologyControl> &topologyControl, bool resetForwardNodes, bool additionalForward);
     void setAllowedToForwardNodes(IntrusivePtr<inet::ClusterAlgTopologyControl> &tc);
     ClusterAlgIpv4Route* findBestCandidateToForward(Ipv4Address clusterId,
             std::multimap<Ipv4Address, ClusterAlgIpv4Route*> clusterToNode);
@@ -98,8 +102,11 @@ protected:
 
     bool updateTopologyControl(IntrusivePtr<inet::ClusterAlgTopologyControl> &topologyControl);
     bool canForwardTC(IntrusivePtr<inet::ClusterAlgTopologyControl> &topologyControl, bool isNewResult);
+    bool hasTopologyControlMyId(IntrusivePtr<inet::ClusterAlgTopologyControl> &topologyControl);
     ClusterInfo* getClusterInfoForTC(IntrusivePtr<inet::ClusterAlgTopologyControl> &topologyControl);
     void setForwardedTopologyControl(IntrusivePtr<inet::ClusterAlgTopologyControl> &topologyControl);
+    void additionalForward(IntrusivePtr<inet::ClusterAlgTopologyControl> &topologyControl);
+    void sendAdditionalForward();
 
     void scheduleTopologyControl(simtime_t scheduleTime);
     void handleClusterStateEvent();

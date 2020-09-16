@@ -15,6 +15,8 @@ simple ClusterAlg like IManetRouting
         double maxVariance = default(2); // This is the maximum of a random value to determine when the first hello message will be sent out
         volatile double broadcastDelay @unit(s) = default(uniform(0s,0.01s));
 		double newMemberTopologyDelay @unit(s) = default(0.01s);
+		bool useAdditionalForward = default(true);
+		double additionalForwardDelay @unit(s) = default(0.01s);
 
         double helloInterval @unit(s) = default(2s);  // how often hello messages should be sent out
         double tcInterval @unit(s) = default(5s);  // how often topology control messages should be sent out
@@ -26,7 +28,7 @@ simple ClusterAlg like IManetRouting
         double clusterLeader @unit(s) = default(3s);
         int maxLeaderRepeats = default(3);
         
-        bool debugAlert = default(false);
+        bool debugAlert = default(true);
         string debugIp = default("145.236.0.9");
         string otherIp = default("145.236.0.18");
 
