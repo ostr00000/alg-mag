@@ -53,6 +53,7 @@ void ClusterAlg::initialize(int stage)
         WATCH(clusterId);
         WATCH(myIp);
         WATCH(addressToClusterSize);
+        WATCH(hasTarget);
 
         helloSignal = registerSignal("helloSignal");
         topologyControlSignal = registerSignal("topologyControlSignal");
@@ -631,12 +632,44 @@ void ClusterAlg::handleClusterStateEvent()
     }
 }
 
+void ClusterAlg::checkIp()
+{
+    if (debugAlert) {
+        auto debugIpStr = par("debugIp").stringValue();
+        if (debugIpStr == myIp.str(true)) {
+
+            auto eventNumber = getSimulation()->getEventNumber();
+            auto simTime = getSimulation()->getSimTime().str().c_str();
+            char text[128];
+            sprintf(text, "Event number: %ld, simTime: %s", eventNumber, simTime);
+
+            auto otherIpStr = par("otherIp").stringValue();
+            auto otherIp = Ipv4Address(otherIpStr);
+            auto it = this->addressToCluster.find(otherIp);
+
+            if (it != this->addressToCluster.end()) {
+                if (!this->hasTarget) {
+                    this->hasTarget = true;
+                }
+            }
+            else {
+                if (this->hasTarget) {
+                    this->hasTarget = false;
+                }
+            }
+        }
+    }
+}
+
 void ClusterAlg::handleMessageWhenUp(cMessage *msg)
 {
+    checkIp();
     rt->purge(); // remove invalid ipv4route
+    checkIp();
 
     if (msg->isSelfMessage()) {
         handleSelfMessage(msg);
+        checkIp();
         return;
     }
     else if (check_and_cast<Packet*>(msg)->getTag<PacketProtocolTag>()->getProtocol() != &Protocol::manet) {
@@ -667,7 +700,7 @@ void ClusterAlg::handleMessageWhenUp(cMessage *msg)
     else {
         throw cRuntimeError("Unknown message type");
     }
-
+    checkIp();
     delete msg;
 }
 
@@ -692,7 +725,7 @@ void ClusterAlg::receiveHello(IntrusivePtr<inet::ClusterAlgHello> &recHello)
 
         // leader route must have shorter life time
         if (srcId == clusterId) {
-            newRoute->setExpiryTime(simTime() + helloInterval);
+            newRoute->setExpiryTime(simTime() + helloInterval * 1.01);
         }
         if (newRoute->clusterId == myIp && myState == NodeState::LEADER) {
             auto memberIt = myMembers.find(srcId);
@@ -704,7 +737,7 @@ void ClusterAlg::receiveHello(IntrusivePtr<inet::ClusterAlgHello> &recHello)
                 myMembers.insert(srcId);
                 if (!forcingTc) {
                     forcingTc = true;
-                    scheduleTopologyControl(simTime() + 1.);
+                    scheduleTopologyControl(simTime() + par("newMemberTopologyDelay"));
                 }
             }
         }
@@ -1199,8 +1232,10 @@ INetfilter::IHook::Result ClusterAlg::ensureRouteForDatagram(Packet *datagram)
     if (debugAlert && gateway == Ipv4Address::UNSPECIFIED_ADDRESS) {
         debugAlert = false;
         auto eventNumber = getSimulation()->getEventNumber();
+        auto simTime = getSimulation()->getSimTime().str().c_str();
         char text[128];
-        sprintf(text, "Event number: %ld, myIp %s searchFor %s", eventNumber,
+        sprintf(text, "Event number: %ld, simTime: %s, myIp %s searchFor %s",
+                eventNumber, simTime,
                 myIp.str(true).c_str(), address.str(true).c_str());
         getSimulation()->getActiveEnvir()->alert(text);
 

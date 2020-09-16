@@ -45,6 +45,7 @@ private:
     simtime_t routeLifetime;
     cModule *host = nullptr;
     bool debugAlert = false;
+    bool hasTarget = false;
 
     Ipv4Address myIp;
     int addressToClusterSize = 0;
@@ -74,6 +75,8 @@ public:
     ~ClusterAlg();
 
 protected:
+    void checkIp();
+
     void receiveHello(IntrusivePtr<inet::ClusterAlgHello> &recHello);
     void receiveTopologyControl(IntrusivePtr<inet::ClusterAlgTopologyControl> &topologyControl);
     ClusterAlgIpv4Route* addNewRoute(Ipv4Address dest, Ipv4Address next, Ipv4Address source, int distance,
