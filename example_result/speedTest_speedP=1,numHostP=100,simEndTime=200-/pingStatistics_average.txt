@@ -1,0 +1,13 @@
+Ping round-trip time
+module    49.500000
+mean       0.017000
+stddev     0.023167
+min        0.001903
+max        0.163552
+Std:
+module    29.011492
+mean       0.006774
+stddev     0.040425
+min        0.001138
+max        0.350230
+dtype: float64

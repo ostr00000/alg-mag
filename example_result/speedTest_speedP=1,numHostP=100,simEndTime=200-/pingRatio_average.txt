@@ -1,0 +1,7 @@
+Udane wysłanie i odbiór wiadomości ping
+module    49.500000
+value     74.639814
+Std:
+module    29.011492
+value     10.747675
+dtype: float64
