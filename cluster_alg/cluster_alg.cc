@@ -970,9 +970,6 @@ void ClusterAlg::recomputeRoute()
 {
     rt->purge();
     clusterGraph->clear();
-//    for (auto clusterNode : idToNode) { // TODO SEGV
-//        delete clusterNode.second;
-//    }
     idToNode.clear();
 
     // add cluster heads
@@ -1014,27 +1011,6 @@ void ClusterAlg::recomputeRoute()
 
         }
     }
-
-//    // add neighbor clusters leaders
-//    for (Ipv4Address neighborCluster : neighborClusters) {
-//        ClusterNode *node;
-//        auto nodeExist = idToNode.find(neighborCluster);
-//        if (nodeExist == idToNode.end()) {
-//            // if node not exist yet then create and add the new node
-//            node = new ClusterNode(neighborCluster); // TODO change constructor type?
-//            clusterGraph->addNode(node);
-//            idToNode.insert(std::pair<Ipv4Address, ClusterNode*>(neighborCluster, node));
-//
-//            int weight = 2;
-//            auto link = new ClusterLink(weight);
-//            link->relation = "1hopL";
-//            clusterGraph->addLink(link, myNode, node);
-//        }
-////        else {
-////            node = nodeExist->second;
-////        }
-//
-//    }
 
     // add direct neighbors
     for (auto it = oneHopNeighborToRoute.begin(); it != oneHopNeighborToRoute.end(); it++) {
