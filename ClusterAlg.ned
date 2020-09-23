@@ -15,12 +15,14 @@ simple ClusterAlg like IManetRouting
         double maxVariance = default(2); // This is the maximum of a random value to determine when the first hello message will be sent out
         volatile double broadcastDelay @unit(s) = default(uniform(0s,0.01s));
 		double newMemberTopologyDelay @unit(s) = default(0.01s);
+		bool useAdditionalForward = default(true);
+		double additionalForwardDelay @unit(s) = default(0.01s);
 
         double helloInterval @unit(s) = default(2s);  // how often hello messages should be sent out
         double tcInterval @unit(s) = default(5s);  // how often topology control messages should be sent out
         double routeLifetime @unit(s) = default(8.1s);  // the expiry time of the routing entries
 
-        double clusterUndecidedFirstTime @unit(s) = default(6s); // must be greater than helloIntrval
+        double clusterUndecidedFirstTime @unit(s) = default(7s); // must be greater than helloIntrval
         double clusterUndecided @unit(s) = default(1s);
         double clusterMember @unit(s) = default(1.5s);
         double clusterLeader @unit(s) = default(3s);

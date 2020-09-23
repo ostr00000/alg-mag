@@ -22,6 +22,7 @@ ClusterAlg::~ClusterAlg()
     delete tcEvent;
     delete clusterStateEvent;
     delete topolgyControlEvent;
+    delete additonalForwardEvent;
     clusterGraph->clear();
     delete clusterGraph;
 }
@@ -43,11 +44,13 @@ void ClusterAlg::initialize(int stage)
         helloInterval = par("helloInterval");
         tcInterval = par("tcInterval");
         debugAlert = par("debugAlert");
+        useAdditionalForward = par("useAdditionalForward");
 
         helloEvent = new cMessage("helloEvent");
         tcEvent = new cMessage("topologyEvent");
         clusterStateEvent = new cMessage("clusterStateEvent");
         topolgyControlEvent = new cMessage("topolgyControlEvent");
+        additonalForwardEvent = new cMessage("additonalForwardEvent");
 
         WATCH(myState);
         WATCH(clusterId);
@@ -135,6 +138,7 @@ void ClusterAlg::stop()
     cancelEvent(tcEvent);
     cancelEvent(helloEvent);
     cancelEvent(clusterStateEvent);
+    cancelEvent(additonalForwardEvent);
 }
 
 void ClusterAlg::handleSelfMessage(cMessage *msg)
@@ -156,6 +160,9 @@ void ClusterAlg::handleSelfMessage(cMessage *msg)
                 emit(clusterDestroyedSignal, 1);
             }
         }
+    }
+    else if (msg == additonalForwardEvent) {
+        sendAdditionalForward();
     }
 }
 
@@ -808,9 +815,98 @@ void ClusterAlg::receiveTopologyControl(IntrusivePtr<inet::ClusterAlgTopologyCon
     }
 
     if (canForwardTC(topologyControl, isNewResult)) {
-        bool resetForwardNodes = (myState == NodeState::LEADER);
-        forwardTC(topologyControl, resetForwardNodes);
+        if (myState == NodeState::LEADER && isNewResult) {
+            forwardTC(topologyControl, true);
+        }
+        else if (hasTopologyControlMyId(topologyControl)) {
+            forwardTC(topologyControl, false);
+        }
+        else if (useAdditionalForward) {
+            additionalForward(topologyControl);
+        }
     }
+}
+void ClusterAlg::additionalForward(IntrusivePtr<inet::ClusterAlgTopologyControl> &topologyControl)
+{
+    bool found = false;
+    int counter = 0;
+    for (auto val : additionalForwardQueue) {
+        if (val.first->getSrcId() == topologyControl->getSrcId()
+                && val.first->getSequencenumber() <= topologyControl->getSequencenumber()) {
+            found = true;
+            break;
+        }
+        counter += 1;
+    }
+    if (found) {
+        additionalForwardQueue.erase(additionalForwardQueue.begin() + counter);
+        if (!additionalForwardQueue.size()) {
+            cancelEvent(additonalForwardEvent);
+        }
+        auto clusterInfo = getClusterInfoForTC(topologyControl);
+        if (clusterInfo != nullptr) {
+            clusterInfo->isAdditionalForwardExecuted = true;
+        }
+    }
+    else {
+        auto clusterInfo = getClusterInfoForTC(topologyControl);
+        if (clusterInfo != nullptr && clusterInfo->isAdditionalForwardExecuted) {
+            return;
+        }
+
+        SimTime time = simTime() + par("additionalForwardDelay").doubleValue() + this->uniform(0.001, 0.005);
+        additionalForwardQueue.push_back(std::pair<IntrusivePtr<
+                inet::ClusterAlgTopologyControl>, SimTime>(topologyControl, time));
+        if (!additonalForwardEvent->isScheduled()) {
+            scheduleAt(time, additonalForwardEvent);
+        }
+    }
+}
+
+void ClusterAlg::sendAdditionalForward()
+{
+    if (additionalForwardQueue.empty()) {
+        return;
+    }
+    auto curTime = simTime();
+    bool found = false;
+    int index = 0;
+    for (auto val : additionalForwardQueue) {
+        if (val.second <= curTime) {
+            found = true;
+            break;
+        }
+        index += 1;
+    }
+
+    if (found) {
+        auto toSend = additionalForwardQueue.at(index).first;
+        additionalForwardQueue.erase(additionalForwardQueue.begin() + index);
+
+        auto clusterInfo = getClusterInfoForTC(toSend);
+        if (clusterInfo != nullptr) {
+            // if not forwarded yet
+            if (!clusterInfo->isAdditionalForwardExecuted) {
+                clusterInfo->isAdditionalForwardExecuted = true;
+                forwardTC(toSend, false, true);
+            }
+        }
+        else {
+            forwardTC(toSend, false, true);
+        }
+    }
+
+    if (additionalForwardQueue.size()) {
+        auto val = additionalForwardQueue.at(0);
+        if (val.second <= simTime()) {
+            sendAdditionalForward();
+        }
+        else {
+            scheduleAt(val.second, additonalForwardEvent);
+        }
+
+    }
+
 }
 
 bool ClusterAlg::canForwardTC(IntrusivePtr<inet::ClusterAlgTopologyControl> &topologyControl, bool isNewResult)
@@ -837,7 +933,10 @@ bool ClusterAlg::canForwardTC(IntrusivePtr<inet::ClusterAlgTopologyControl> &top
         }
         return false;
     }
-
+    return true;
+}
+bool ClusterAlg::hasTopologyControlMyId(IntrusivePtr<inet::ClusterAlgTopologyControl> &topologyControl)
+{
     // otherwise forward only if my id is in allowed to forward list
     // we must check every time, because it is possible that our leader add our id to the list
     for (int i = 0, j = topologyControl->getAllowedToForwardArraySize(); i < j; i++) {
@@ -1165,8 +1264,13 @@ bool ClusterAlg::updateTopologyControl(IntrusivePtr<inet::ClusterAlgTopologyCont
     return true;
 
 }
-
 void ClusterAlg::forwardTC(IntrusivePtr<inet::ClusterAlgTopologyControl> &topologyControl, bool resetForwardNodes)
+{
+    forwardTC(topologyControl, resetForwardNodes, false);
+}
+
+void ClusterAlg::forwardTC(IntrusivePtr<inet::ClusterAlgTopologyControl> &topologyControl,
+        bool resetForwardNodes, bool additionalForward)
 {
     setForwardedTopologyControl(topologyControl);
 
@@ -1203,6 +1307,9 @@ void ClusterAlg::forwardTC(IntrusivePtr<inet::ClusterAlgTopologyControl> &topolo
 
     //new control info for ClusterAlgTopologyControl
     auto packetName = resetForwardNodes ? "TopologyControlForwardFromLeader" : "TopologyControlForward";
+    if (additionalForward) {
+        packetName = "TopologyControlForwardAdditional";
+    }
     auto packet = new Packet(packetName, tc);
     auto addressReq = packet->addTag<L3AddressReq>();
     addressReq->setDestAddress(Ipv4Address(255, 255, 255, 255));

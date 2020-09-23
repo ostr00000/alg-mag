@@ -32,6 +32,7 @@ public:
     unsigned int seq;
     std::vector<Ipv4Address> neighborClusters;
     bool isForwarded = false;
+    bool isAdditionalForwardExecuted = false;
 };
 
 class ClusterLink : public cTopology::Link
