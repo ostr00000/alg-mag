@@ -22,13 +22,13 @@ simple ClusterAlg like IManetRouting
         double tcInterval @unit(s) = default(5s);  // how often topology control messages should be sent out
         double routeLifetime @unit(s) = default(8.1s);  // the expiry time of the routing entries
 
-        double clusterUndecidedFirstTime @unit(s) = default(6s); // must be greater than helloIntrval
+        double clusterUndecidedFirstTime @unit(s) = default(7s); // must be greater than helloIntrval
         double clusterUndecided @unit(s) = default(1s);
         double clusterMember @unit(s) = default(1.5s);
         double clusterLeader @unit(s) = default(3s);
         int maxLeaderRepeats = default(3);
         
-        bool debugAlert = default(true);
+        bool debugAlert = default(false);
         string debugIp = default("145.236.0.9");
         string otherIp = default("145.236.0.18");
 
